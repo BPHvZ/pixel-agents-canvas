@@ -5,7 +5,7 @@
 
 ## Product goal
 
-Ship a public, installable GitHub Copilot App canvas extension that visualizes real AI-agent activity in a delightful pixel-art office. GitHub Copilot (the current Copilot App session) and OpenAI Codex must be supported through their actual local/runtime interfaces. The office must not imply that a provider is connected when it is not. A clearly labeled preview mode may be available for users who have not configured either provider, but it is not the product's integration story.
+Ship a public, installable GitHub Copilot App canvas extension that meaningfully visualizes real AI-agent activity in a delightful pixel-art office. GitHub Copilot (the current Copilot App session) and OpenAI Codex must be supported through their actual local/runtime interfaces. Meaningful use must not depend on the user having a Copilot subscription; verify the host, install, and runtime constraints before claiming availability. The canvas is the product; any clearly labeled preview mode is optional onboarding/testing only and is never a substitute for real provider integrations. The office must not imply that a provider is connected when it is not. The initial product is read-only session visualization, not an agent launcher, task manager, or orchestration surface.
 
 ## Implementation status
 
@@ -22,10 +22,12 @@ The canvas now consumes metadata-only Copilot session hooks, and includes an exp
 
 ## Decisions already made for this proposal
 
-- Treat this as a real integration product; demo data is not evidence of provider support.
+- Treat this as a real integration product; demo data is not evidence of provider support. Preview is optional and explicitly labeled, not the product.
+- Support both Copilot and Codex while ensuring meaningful product use is not gated on a Copilot subscription; validate actual host/installation limits rather than assume cross-host or account-wide access.
+- Keep the initial experience read-only: visualize observed sessions without assigning tasks, launching agents, or orchestrating work.
 - Copilot support is scoped to the hosting session exposed to the extension, not all user sessions.
 - Codex support is a separately enabled local adapter, not an API-key integration or automatic subscription bridge.
-- Activity is privacy-minimized: lifecycle metadata only by default; no prompt or tool payload capture.
+- Activity is privacy-minimized: lifecycle metadata only by default; no prompt or tool payload capture. Detailed information is not part of the default product; any future opt-in must be demonstrably on-device, protected, and separately reviewed for consent, retention, and deletion.
 - The office should degrade gracefully with neither provider available and visibly distinguish preview, connected, and disconnected states.
 
 ## Implementation defaults (approved autonomously)
@@ -67,6 +69,21 @@ These defaults limit ambient access and avoid silently attaching to private conv
 - Validate extension discovery, canvas open/actions, responsive/accessible renderer, both adapters independently, both enabled, and neither enabled.
 - Add troubleshooting, permissions/privacy, provider availability, installation, and limitations docs.
 - Publish only after product behavior matches labels and all provider acceptance tests pass.
+
+## Product scope and inspiration notes
+
+The references below are examples, not product specifications. Feature descriptions are observations from their public project READMEs and may change:
+
+- [agent-virtual-office](https://github.com/KbWen/agent-virtual-office) describes a compact pixel office driven by real session/CI events, status APIs and integrations including Codex CLI/App; it emphasizes not inventing agent dialogue and documents hook-driven activity. This supports the truthful, event-driven visualization direction.
+- [agent-office](https://github.com/Pixel-Process-UG/agent-office) describes chat, task assignment, saved results, integrations, decisions and accessibility; its README labels the project early development. These broader control features are explicitly outside this product's initial read-only scope.
+- [pixel-agents](https://github.com/pixel-agents-hq/pixel-agents) describes a provider-neutral hook-provider boundary, local provider hooks plus transcript scanning, an editable/persistent office, and extension/standalone delivery. Its README identifies Claude as the reference implementation and Codex as roadmap, so it is evidence for an architectural pattern, not proof of Codex support.
+
+## Open validation gates
+
+- Verify the actual Copilot App canvas installation/distribution and host API requirements, and confirm meaningful use without a Copilot subscription. Do not infer these guarantees from VS Code or another product's documentation.
+- Verify what on-device boundaries are technically enforceable for this canvas and local Codex process. If the host cannot guarantee that detailed information stays local and protected, keep the metadata-only default and do not offer detailed capture.
+- Compare provider-supplied explicit events/hooks with optional provider-local discovery. Any discovery must be opt-in, scoped, capability-reported, and must not enumerate unrelated/private history without a separately accepted decision.
+- Confirm provider event coverage and truthful status mapping; missing/ambiguous signals must resolve to `unknown`/disconnected, not fabricated activity.
 
 ## Risks / constraints
 

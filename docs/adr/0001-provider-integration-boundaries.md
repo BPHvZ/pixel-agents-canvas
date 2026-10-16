@@ -11,7 +11,7 @@ The installed Copilot SDK author guide lists extension hooks including session s
 
 ## Decision
 
-Use a provider-neutral event model behind independent Copilot-session and Codex-local adapters:
+Use a provider-neutral event model behind independent Copilot-session and Codex-local adapters. The normalized contract is the baseline; whether optional provider-local discovery supplements explicit hooks/events remains an open question rather than an implicit permission:
 
 - Copilot adapter consumes only supported callbacks from the session hosting the extension.
 - Codex adapter is opt-in and local-only, using the stdio app-server protocol verified against the installed CLI schema and exercised in a live authenticated CLI. It will not use a remote WebSocket listener, scrape UI, or read Codex auth/config files.
@@ -34,6 +34,18 @@ Use a provider-neutral event model behind independent Copilot-session and Codex-
 3. **Poll product UI or inspect local history/config files.** Rejected: brittle, privacy-invasive, unsupported, and likely to expose sensitive content.
 4. **Use Codex WebSocket app-server.** Rejected for initial integration because official docs identify it as experimental/unsupported and warn against unauthenticated exposure; local stdio is the preferred candidate.
 5. **Treat VS Code's Copilot MCP support as Copilot App integration.** Rejected: it documents a separate product and does not establish Copilot App canvas/provider activity API support.
+
+## Inspiration-project observations
+
+These references demonstrate patterns, not verified capabilities of this product:
+
+- `KbWen/agent-virtual-office` describes real event/status integrations including Codex CLI/App, with actual session state and no invented dialogue.
+- `pixel-agents-hq/pixel-agents` describes a provider-neutral hook-provider interface and normalized events; its README calls Claude the reference provider and Codex roadmap work.
+- `Pixel-Process-UG/agent-office` describes richer chat/task orchestration, but labels itself early development. Those control features are outside this read-only product scope.
+
+## Open question: provider discovery
+
+The baseline uses explicit provider events and hooks. Optional local discovery (for example, scanning provider-owned local session metadata) could improve visibility but can broaden access beyond sessions created/owned by this extension. Do not implement it under this decision. Compare the value, host feasibility, consent, privacy boundary, and ability to restrict discovery to user-selected sessions before proposing a separate accepted ADR. Discovery must not silently enumerate unrelated/private history.
 
 ## Revisit when
 
