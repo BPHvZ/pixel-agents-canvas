@@ -11,10 +11,13 @@ The inspiration projects show distinct scope choices: `agent-virtual-office` emp
 
 ## Decision
 
-- Treat the installable Copilot App canvas as the core product and source of product behavior. A preview/sample mode may be offered only as an optional, explicitly labeled onboarding/testing aid; it must never be the only working mode or masquerade as provider activity.
-- Keep v1 read-only: visualize observable Copilot/Codex sessions; do not launch agents, assign tasks, send prompts, or orchestrate work.
-- Support the hosting Copilot session and the opt-in local Codex integration described in ADR 0001, without requiring a Copilot subscription for meaningful use. State clearly that Codex access depends on local CLI availability and user access; a ChatGPT subscription is not assumed to grant it.
-- Treat host/install/distribution availability and subscription independence as release validation gates. If the current canvas host cannot meet them, report the limitation and revisit product viability rather than substituting a demo or silently changing the target product.
+- The product is one installable canvas experience supported in VS Code and the GitHub Copilot App. Target a single artifact, but use host-specific packaging over reduced provider access if validation proves one packaging path cannot serve both. Same product intent does not promise identical host capabilities.
+- Meaningful use must not require a Copilot subscription. Enable providers independently; report each host/provider's actual access and coverage.
+- V1 is a useful read-only dashboard: session/agent identity when available, provider and discovery source, lifecycle/waiting state, safe task summary, freshness, and documented open/focus navigation where supported. No launching, steering, task assignment, or orchestration.
+- Include sessions not launched by the extension only where supported APIs provide them. Codex app-server discovery is a feasibility target after explicit provider opt-in; Copilot coverage may be limited to the hosting conversation. Unsupported, unavailable, confirmed-empty, stale, and disconnected are distinct states.
+- The primary office emphasizes active sessions. Provider-reported terminal sessions are hidden by default; an opt-in view may show terminal sessions observed during the current host lifetime as sleeping/off-duty. No idle timeout may fabricate completion.
+- Room/desk clusters group provider-established session relationships only. The main canvas stays focused; detailed source coverage is available in an optional, hidden-by-default secondary view, with a compact health indicator in the office.
+- Preview remains an optional, explicitly labeled test/onboarding aid, never a substitute for provider support.
 
 ## Consequences
 
@@ -32,3 +35,7 @@ The inspiration projects show distinct scope choices: `agent-virtual-office` emp
 ## Revisit when
 
 Copilot App host capabilities or distribution/subscription rules change, Codex local-process support changes, or the user explicitly changes the read-only product requirement.
+
+## V1 acceptance bar
+
+The dashboard is useful without preview data: it shows discovered provider/session/agent identities, lifecycle and waiting states, a safe task summary where available, source/freshness, and open/focus navigation where supported. No arbitrary product cap is set; practical scale is established through rendering/performance tests. V1 is single-user in the current host context.

@@ -9,18 +9,19 @@ ADR 0002 establishes lifecycle metadata in memory as the initial default, exclud
 
 ## Decision
 
-- Preserve ADR 0002's metadata-only, in-memory behavior as the default. Do not capture prompts, full transcripts, tool inputs/results, file contents, or credentials by default.
-- Treat detailed content as a possible future, separately opt-in capability—not an approved implementation requirement. Before offering it, verify local-only processing end to end (including logs, crash reports, telemetry, host APIs, and any bridge), define protection and retention/deletion controls, minimize collected fields, and obtain explicit, understandable consent.
-- Never persist detailed content or provider payloads as part of the current product plan. Any future persistence requires a separate ADR and explicit user approval.
-- If the host/runtime cannot demonstrate that detailed data remains on-device and protected, do not expose the detailed mode; remain metadata-only.
-- For all modes, clear transient state on disable/close and avoid logging sensitive provider data. Diagnostics should contain only non-sensitive operational status.
+- The product is local-first: no external transmission of session content, prompts, generated summaries, or activity timelines, including cloud summarization, content telemetry, or remote aggregation.
+- Provider metadata is the default; no prompt, transcript, tool input/result, file content, or credential is displayed or retained.
+- Prompt-based summarization is a separate explicit opt-in, off by default. It may be offered only if end-to-end on-device transient processing is demonstrable in each host, raw prompt text is discarded immediately, only the summary is shown, and nothing content-bearing is logged or persisted. Persist only the consent preference.
+- Clear all activity state on disable/close. Diagnostics contain non-sensitive operational status only. If a host cannot meet the boundary, keep prompt summarization disabled there.
+- The local Codex app-server process is an extension-managed provider adapter, not a separate companion app. It starts only after explicit provider enablement, uses local stdio, and stops with the extension; no arbitrary remote server or auth-file reads.
 
 ## Consequences
 
 - The current implementation remains within the smaller data footprint already accepted by ADR 0002.
 - Richer explanations of activity are constrained until a privacy review and technical local-only validation pass.
 - “On-device” must be an evidence-based property of the full host/extension/provider path, not a marketing assumption based only on launching a local process.
-- This ADR does not grant permission to inspect unrelated local session history or attach to Codex threads not created/owned by the extension.
+- Codex thread discovery is governed by ADR 0001 and explicit provider opt-in; discovery may include existing threads only through the supported app-server API and must remain metadata-only unless prompt-summary consent is enabled.
+- The canvas must not transmit session content to external services. If either host cannot enforce that for prompt summarization, the setting remains unavailable there.
 
 ## Alternatives considered
 

@@ -1,102 +1,101 @@
 # Pixel Agents Office: Product plan
 
-**Status:** Approved for implementation under conservative defaults (user instruction: proceed autonomously)
+**Status:** Product refinement approved; implementation not yet authorized by this document
 **Last updated:** 2026-10-16
 
 ## Product goal
 
-Ship a public, installable GitHub Copilot App canvas extension that meaningfully visualizes real AI-agent activity in a delightful pixel-art office. GitHub Copilot (the current Copilot App session) and OpenAI Codex must be supported through their actual local/runtime interfaces. Meaningful use must not depend on the user having a Copilot subscription; verify the host, install, and runtime constraints before claiming availability. The canvas is the product; any clearly labeled preview mode is optional onboarding/testing only and is never a substitute for real provider integrations. The office must not imply that a provider is connected when it is not. The initial product is read-only session visualization, not an agent launcher, task manager, or orchestration surface.
+Deliver a genuinely useful, installable, read-only session dashboard in a pixel-art office—not a demo presented as a product. Target one canvas experience in both VS Code and the GitHub Copilot App, and do not require a Copilot subscription for meaningful use. Show all Copilot/Codex coding-agent sessions only where supported host/provider APIs make them observable; disclose coverage differences rather than inventing activity. An optional preview is solely an explicitly labeled onboarding/test aid.
 
-## Implementation status
+## Product definition
 
-The canvas now consumes metadata-only Copilot session hooks, and includes an explicitly enabled local Codex app-server adapter that tracks only threads it creates. Provider modules and state tests are present. Remaining release work is protocol fixture testing, runtime integration validation/reload, README alignment, and final app-host verification.
+### V1 dashboard
+
+The office is the primary view and must remain useful without sample data. For each observable session and provider-identified agent, show identity when available, provider and discovery source, provider-reported lifecycle/waiting state, safe task summary when available, last activity/freshness, and open/focus navigation when supported. Make missing fields explicit instead of fabricating values. Distinguish unsupported provider, supported-but-unavailable integration, connected with confirmed no sessions, stale/disconnected source, and discovered sessions.
+
+Represent each distinct provider-established agent identity—including separately identified subagents—as a character, grouped into a session room/desk cluster only when the relationship is provider-reported. Do not infer extra workers or hierarchy from tool events/text. Room layout is generated, not user-editable in V1, and does not imply shared files or workspace. Playful role/mood cues may be activity-derived if clearly marked as inference and strictly decorative; they never alter factual lifecycle, sorting, or actions.
+
+Show active sessions by default. Hide provider-reported terminal sessions; offer a setting to show terminal sessions observed during the current host lifetime as sleeping/off-duty. Never infer completion from an idle timeout. Keep a compact source-health indicator in the office; expose detailed coverage in an optional, hidden-by-default secondary view.
+
+### Interaction and boundary
+
+Read-only means the extension never launches a model turn, sends/steers a prompt, assigns work, stops/pauses an agent, or orchestrates. Users may open/focus an underlying conversation only when a documented host/provider navigation API supports it. One user/current host context only in V1; no shared-office synchronization. Do not impose an arbitrary product cap; establish practical performance limits by testing.
+
+### Data and consent
+
+Provider metadata is the default source for sanitized task summaries. Prompt summarization is a separate setting, off by default, persisted as a preference only. When explicitly enabled, it must process on-device/transiently, display only the summary, immediately discard raw prompt text, avoid content-bearing logs, and allow disablement. Keep activity timeline and all discovered activity in memory only; clear it when the extension/host closes. No session content, prompts, summaries, or activity timeline may be sent externally. If these properties cannot be demonstrated in a host, prompt summarization stays unavailable there.
+
+Enable providers independently. Codex discovery can start an extension-managed local `codex app-server` over stdio only after explicit user enablement; it is not a separate companion app, stops with the extension, and does not read auth/config files. Copilot support may be limited to the hosting conversation. Do not require equal coverage; show the source limitations. A ChatGPT subscription is not assumed to grant Codex CLI access.
+
+## Current implementation and gap
+
+The current canvas listens to hooks from its hosting Copilot App session and displays one generic Copilot entry. It starts an opt-in Codex app-server, creates an ephemeral thread, and accepts events only for thread IDs in its `ownedThreads` set. It does not discover existing Codex threads or unrelated Copilot sessions, model multiple provider-identified agents/subagents, or meet the full V1 usefulness bar. Existing preview-like rendering and any seeded labels are not a product substitute. No implementation code is authorized by this refinement.
 
 ## Proposed architecture
 
-1. **Canvas shell and renderer** — Keep the Copilot SDK `createCanvas` extension as the app entry point and serve the pixel-art renderer over loopback. Separate the renderer, state model, and provider adapters into focused modules. The UI shows connection state, last-event time, and a truthful disconnected/preview state; no hard-coded live/working claims.
-2. **Canonical event model** — Normalize provider events into a small internal model: provider/agent identity, lifecycle (`idle`, `working`, `waiting`, `completed`, `failed`, `unknown`), safe task summary, timestamps, and source. Do not retain prompts, tool arguments/results, file contents, or credentials. Status is derived from events and expires to `unknown` after a configurable stale timeout rather than remaining indefinitely active.
-3. **Copilot adapter (native, no separate credential)** — The installed SDK author guide confirms `joinSession({ hooks })` supports `onSessionStart`, `onSessionEnd`, `onUserPromptSubmitted`, `onPreToolUse`, `onPostToolUse`, `onPostToolUseFailure`, `onErrorOccurred`, and subagent lifecycle hooks. Convert lifecycle/tool activity to office events while returning no permission decisions or prompt modifications. The documented hook inputs include prompt text, tool args/results, and response text; handlers must deliberately discard those fields after extracting only status/timestamps and, if explicitly approved, a redacted tool label. This observes the session that hosts the extension; it is not an account-wide Copilot monitor and cannot see unrelated sessions. Verify exact signatures against installed `agent-author.md` and generated types before implementation.
-4. **Codex adapter (opt-in local bridge)** — Investigate a user-controlled local `codex app-server` stdio integration using its documented JSON-RPC lifecycle/notification protocol, reusing the user's existing Codex CLI sign-in. Start only after explicit enablement; detect missing CLI, unsupported versions, unauthenticated state, and disconnects and show them accurately. Do not bind Codex app-server to a network interface, store/retrieve auth files, or claim that a ChatGPT subscription automatically grants Codex CLI access. Confirm app-server stability/protocol and distribution support before committing to this adapter.
-5. **Provider boundary and UI controls** — Each adapter reports capabilities/connection state and emits normalized events. The canvas has provider enable/disable, health, and reset controls. Manual/sample agents may be offered as a clearly marked preview path only; never represent them as connected providers.
-6. **Installable packaging** — Project extension remains discoverable at `.github/extensions/pixel-agents-canvas/extension.mjs`. Document repository installation/reload and host/API requirements. Avoid requesting secrets. If Codex requires local executable permissions, explain and obtain consent through the supported UX before launching it.
-
-## Decisions already made for this proposal
-
-- Treat this as a real integration product; demo data is not evidence of provider support. Preview is optional and explicitly labeled, not the product.
-- Support both Copilot and Codex while ensuring meaningful product use is not gated on a Copilot subscription; validate actual host/installation limits rather than assume cross-host or account-wide access.
-- Keep the initial experience read-only: visualize observed sessions without assigning tasks, launching agents, or orchestrating work.
-- Copilot support is scoped to the hosting session exposed to the extension, not all user sessions.
-- Codex support is a separately enabled local adapter, not an API-key integration or automatic subscription bridge.
-- Activity is privacy-minimized: lifecycle metadata only by default; no prompt or tool payload capture. Detailed information is not part of the default product; any future opt-in must be demonstrably on-device, protected, and separately reviewed for consent, retention, and deletion.
-- The office should degrade gracefully with neither provider available and visibly distinguish preview, connected, and disconnected states.
-
-## Implementation defaults (approved autonomously)
-
-To avoid blocking delivery, use these conservative defaults unless the user later directs otherwise:
-
-1. Launch and manage `codex app-server` as a local stdio child process only after the user explicitly enables Codex from the canvas; never connect to an arbitrary pre-existing server.
-2. Observe only Codex threads created/owned by this extension; do not enumerate or attach to unrelated history/threads.
-3. Keep activity in memory only; no persisted history.
-4. Keep preview as an explicit, clearly labeled mode that is off when real providers are connected and can never appear connected.
-
-These defaults limit ambient access and avoid silently attaching to private conversations.
+1. **Canvas shell and host packaging** — Keep the canvas as the product surface. Validate supported extension packaging, process/runtime permissions, and lifecycle in both target hosts. A single artifact is the goal; allow host-specific packaging that shares product/core code if required rather than weakening access or requiring a Copilot subscription.
+2. **Provider-neutral domain model** — Normalize provider sessions, agent identities, reported parent/session relationships, lifecycle, safe summary, timestamps, freshness, discovery source, and capabilities. Preserve provenance and represent absence/unknown explicitly.
+3. **Independent adapters** — Copilot consumes supported hosting-session hooks; Codex uses an explicitly enabled local stdio app-server candidate. Adapter states must distinguish unsupported, unavailable, confirmed empty, stale/disconnected, and active discovery.
+4. **Office and coverage views** — Main view maps provider-established agents into session clusters and prioritizes active work. An optional hidden-by-default view explains provider scope, availability, discovered session count, freshness, and known limitations. Both views expose accessible textual status; animation is supplementary.
+5. **Privacy boundary** — Field-select provider metadata; never copy full payloads. Default to metadata summaries and transient in-memory activity. Gate prompt summarization behind explicit consent and demonstrable local-only transient handling. Persist only that setting.
 
 ## Delivery phases and acceptance criteria
 
-### Phase 0 — Architecture approval and API feasibility
-- **Complete:** User authorized autonomous implementation under documented conservative defaults.
-- Copilot hook names and broad input types are confirmed by the installed SDK `docs/agent-author.md`; verify exact generated types and canvas host behavior at implementation time.
-- Verify Codex app-server lifecycle notification names/payloads, auth prerequisites, CLI detection, and supported stdio launch/termination behavior against current official docs and local CLI.
-- Record any SDK/protocol caveats in ADRs before implementing adapters.
+### Phase 0 — Feasibility / release gates
+- Verify current official app-server `thread/list`, metadata fields, lifecycle notifications, parent/subagent representation, archive/terminal semantics, pagination, and supported CLI versions. Demonstrate discovery of existing threads without reading transcript content in metadata-only mode.
+- Verify explicit process consent, local stdio launch/stop, host lifecycle, and no external session-data transmission in both canvas runtimes.
+- Verify official host navigation/open-focus capability, or document its absence.
+- Verify canvas extension installation/packaging and useful operation without a Copilot subscription. Test whether one artifact works in both hosts; decide packaging accordingly.
+- Confirm the host's prompt hook delivery and ensure opt-in summarization can be transient/on-device with raw prompt discard. Otherwise omit that setting per host.
+- **Gate:** if a required capability is unsupported, narrow and clearly label that source's coverage; do not substitute simulation. Revisit product viability only if no provider path can meet the minimum usefulness bar.
 
-### Phase 1 — Provider-neutral core and honest UI
-- Extract renderer, state store, event normalization, and provider contract from `extension.mjs`.
-- Add connection/last-event states, stale timeout, privacy-safe task summaries, accessible status text, and accurate preview/disconnected labels.
-- Unit-test normalization, state transitions, stale detection, and data minimization.
+### Phase 1 — Domain and provider-neutral core
+- Implement/test session-versus-agent identity, provider-established hierarchy, provenance, partial/unknown values, terminal states, stale/fresh status, and independent provider availability.
+- Test malformed, duplicate, out-of-order, and missing provider signals without implying false work or completion.
 
-### Phase 2 — Copilot session adapter
-- Subscribe via confirmed SDK hooks/events without blocking or changing permissions.
-- Map lifecycle to status and test start/prompt/tool/end/error transitions with synthetic fixtures.
-- Verify no prompt/tool payload persists or appears in the office by default.
+### Phase 2 — Codex existing-session discovery
+- After Phase 0 validation, implement explicit opt-in local app-server lifecycle and list/subscribe metadata for supported existing threads.
+- Do not access transcripts unless prompt-summary consent is enabled; even then enforce the separate privacy contract.
+- Test pagination, process failure/restart, archive/completion, thread ownership boundaries, relationships, and cleanup with fixtures plus a live CLI where available.
 
-### Phase 3 — Codex local adapter
-- Implement only after Phase 0 feasibility and user approval.
-- Add explicit enable/consent and CLI/version/auth diagnostics; use local stdio only.
-- Normalize thread/turn/item events, recover from process exit, and shut down the child on disable/close.
-- Test with mocked JSON-RPC fixtures and an authenticated local Codex CLI where available; report inability to test live integration honestly.
+### Phase 3 — Copilot and navigation adapters
+- Implement the documented hosting-conversation hooks and expose their narrow scope.
+- Add open/focus only when confirmed by a supported host/provider API; do not call guessed internal commands.
+- Ensure providers work independently and a missing Copilot entitlement does not block Codex functionality.
 
-### Phase 4 — Release readiness
-- Validate extension discovery, canvas open/actions, responsive/accessible renderer, both adapters independently, both enabled, and neither enabled.
-- Add troubleshooting, permissions/privacy, provider availability, installation, and limitations docs.
-- Publish only after product behavior matches labels and all provider acceptance tests pass.
+### Phase 4 — Product UI and consent
+- Build clustered agent representation, active-first filter, opt-in current-run sleeping/off-duty view, optional coverage panel, safe summaries, freshness, and explicit per-source states.
+- Add prompt-summary consent only where local-only transient handling is proven; persist preference only and show a processing indicator.
+- Meet keyboard, screen-reader, reduced-motion, responsive, and readable status acceptance criteria.
 
-## Product scope and inspiration notes
+### Phase 5 — Distribution and release verification
+- Test installation and lifecycle in VS Code and Copilot App, provider combinations (Copilot only, Codex only, both, neither), no Copilot entitlement, no-session/unsupported/offline states, open/focus, and practical scale.
+- Document installation, consent, data boundaries, provider-specific coverage, limitations, and troubleshooting. Publish only with product behavior aligned with labels; preview remains off by default and visibly separate.
 
-The references below are examples, not product specifications. Feature descriptions are observations from their public project READMEs and may change:
+## Decisions already made
 
-- [agent-virtual-office](https://github.com/KbWen/agent-virtual-office) describes a compact pixel office driven by real session/CI events, status APIs and integrations including Codex CLI/App; it emphasizes not inventing agent dialogue and documents hook-driven activity. This supports the truthful, event-driven visualization direction.
-- [agent-office](https://github.com/Pixel-Process-UG/agent-office) describes chat, task assignment, saved results, integrations, decisions and accessibility; its README labels the project early development. These broader control features are explicitly outside this product's initial read-only scope.
-- [pixel-agents](https://github.com/pixel-agents-hq/pixel-agents) describes a provider-neutral hook-provider boundary, local provider hooks plus transcript scanning, an editable/persistent office, and extension/standalone delivery. Its README identifies Claude as the reference implementation and Codex as roadmap, so it is evidence for an architectural pattern, not proof of Codex support.
+See ADRs 0001–0007. In brief: read-only local-first dashboard; one product targeting both hosts with truthful host-specific scope; no Copilot subscription gate; independent providers; explicit Codex process consent; supported API discovery only; transient timeline; metadata summaries by default; explicit opt-in prompt processing only if locally enforceable; provider-established agent identities/relationships; active sessions by default; optional coverage and inactive-session views; no simulation as fallback.
 
-## Open validation gates
+## Unresolved validation questions
 
-- Verify the actual Copilot App canvas installation/distribution and host API requirements, and confirm meaningful use without a Copilot subscription. Do not infer these guarantees from VS Code or another product's documentation.
-- Verify what on-device boundaries are technically enforceable for this canvas and local Codex process. If the host cannot guarantee that detailed information stays local and protected, keep the metadata-only default and do not offer detailed capture.
-- Compare provider-supplied explicit events/hooks with optional provider-local discovery. Any discovery must be opt-in, scoped, capability-reported, and must not enumerate unrelated/private history without a separately accepted decision.
-- Confirm provider event coverage and truthful status mapping; missing/ambiguous signals must resolve to `unknown`/disconnected, not fabricated activity.
+These are research/acceptance gates, not silently assumed product decisions:
 
-## Risks / constraints
+- Does Codex app-server `thread/list` expose enough safe metadata for useful summaries/status without transcript reads, and can it report subagent identities/links across supported CLI versions?
+- Can canvas extension lifecycle launch and manage a local child process consistently in both hosts, with user consent and deterministic cleanup?
+- What session-opening/navigation command is officially supported in each host/provider?
+- Can the same installable artifact work in both hosts without a Copilot subscription, or is shared-core host-specific packaging required?
+- Can prompt text be summarized on-device transiently in both hosts without host-side external processing, content logs, or retained raw text?
+- What practical maximum agent/session count meets performance and accessibility expectations?
 
-- Canvas and extension APIs are experimental and can change with the Copilot App/SDK release.
-- Copilot session hooks can only report events visible to the hosting session and do not grant broad account monitoring.
-- Codex app-server is documented as the rich-client interface; transport and event protocol stability/availability must be verified for the selected installed CLI. Some transports (notably WebSocket) are explicitly experimental/unsupported; prefer stdio and do not expose a listener.
-- A ChatGPT subscription is not a guarantee of Codex CLI/app-server access; Codex CLI authentication/plan availability is account- and product-dependent.
-- Local child-process execution requires careful consent, lifecycle cleanup, and error handling; never forward untrusted tool output into commands.
-- No installable Copilot App extension can make provider events appear if the host/runtime does not expose them.
+## Inspiration and evidence
+
+The public READMEs are inspiration, not product requirements. `agent-virtual-office` describes real session/CI status integrations and playful reactions, emphasizing actual status and no invented dialogue. `agent-office` advertises chat, task assignment, saved results, integrations, and decisions while warning that it is early development; those control features are outside this product's read-only scope. `pixel-agents` describes one character per agent terminal and separate characters for observable subagents/teammates, a provider-neutral hook-provider interface, and persistent editable layouts; its README lists Codex as roadmap rather than shipped support. These examples support exploring grouped characters and adapter boundaries, but do not prove this host can observe equivalent signals.
 
 ## Primary references
 
-- Copilot SDK extension docs: `/Applications/GitHub Copilot.app/Contents/Resources/copilot-sdk/docs/extensions.md` and `canvas.d.ts` (installed SDK; verify version-specific APIs at implementation time).
-- OpenAI Codex app-server: <https://developers.openai.com/codex/app-server/> — describes rich-client auth, history, approvals, streamed events, JSON-RPC, and experimental WebSocket limitations.
-- OpenAI Codex SDK: <https://developers.openai.com/codex/sdk/> — documents TypeScript SDK for controlling local Codex threads; this is not assumed to be the activity observer for sessions outside the extension's control.
-- GitHub Copilot MCP information (context only; VS Code documentation is not evidence of Copilot App canvas hook support): <https://docs.github.com/en/copilot/customizing-copilot/extending-copilot-chat-with-mcp>.
+- VS Code 1.142 canvases preview: https://code.visualstudio.com/updates/v1_142#_canvases-preview — canvases work in editor and Agents window and extensions are supported in Copilot App; VS Code preview availability is described for local Copilot-harness sessions. This is not proof of cross-session observability.
+- VS Code API reference: https://code.visualstudio.com/api/references/vscode-api — public extension API inventory; no general chat-session enumeration API has been established in this refinement.
+- Copilot App canvas extension docs: https://docs.github.com/en/copilot/how-tos/github-copilot-app/working-with-canvas-extensions
+- Codex app-server protocol: https://github.com/openai/codex/blob/main/codex-rs/app-server/README.md — official protocol currently documents `thread/list`; validate method/schema against the selected supported CLI release.
+- Inspirations: https://github.com/KbWen/agent-virtual-office, https://github.com/Pixel-Process-UG/agent-office, https://github.com/pixel-agents-hq/pixel-agents
+- Project-specific Copilot SDK docs/types are versioned with the installed extension SDK and must be checked during implementation.

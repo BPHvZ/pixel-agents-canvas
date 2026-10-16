@@ -11,13 +11,14 @@ The installed Copilot SDK author guide lists extension hooks including session s
 
 ## Decision
 
-Use a provider-neutral event model behind independent Copilot-session and Codex-local adapters. The normalized contract is the baseline; whether optional provider-local discovery supplements explicit hooks/events remains an open question rather than an implicit permission:
+Use a provider-neutral session/agent model behind independent, capability-reporting adapters. Discovery is permitted only through supported provider protocols, with explicit provider enablement where it launches a local process. Preserve provider/source provenance and represent missing values as unknown; do not enumerate via scraping, undocumented APIs, or auth/config-file inspection.
 
-- Copilot adapter consumes only supported callbacks from the session hosting the extension.
-- Codex adapter is opt-in and local-only, using the stdio app-server protocol verified against the installed CLI schema and exercised in a live authenticated CLI. It will not use a remote WebSocket listener, scrape UI, or read Codex auth/config files.
-- Both adapters emit metadata-only lifecycle events (identity, status, short safe task label, timestamp, source). Raw prompts, tool arguments/results, source content, and credentials are excluded by default.
-- The renderer must clearly state provider connection and event freshness. Unknown/disconnected is not shown as working. Preview/mock entries are visibly labeled and never counted as real provider connections.
-- If an adapter is unavailable or unsupported, it degrades to disconnected/unknown status with actionable diagnostics rather than silently simulating activity.
+- Copilot consumes supported hooks for the hosting conversation. Broader Copilot session enumeration is not established by available evidence; do not promise it or use undocumented discovery.
+- Codex may use an explicitly enabled, extension-managed local stdio app-server. The official protocol documents `thread/list` and lifecycle notifications, making broader existing-thread discovery a validation target. Restrict to metadata and provider-reported relationships; do not access transcript content unless separate prompt-summary consent is enabled. Do not use a remote WebSocket listener or read auth/config files.
+- Adapters report independently whether a provider is unsupported, unavailable, connected with no sessions, stale/disconnected, or returning sessions. A confirmed empty result requires successful discovery.
+- One character represents each provider-established agent identity, including a top-level agent and distinct reported subagents, grouped by their provider-established session relationship. Do not infer agents or hierarchy from tool events or text.
+- Preserve source, identity, timestamp, and lifecycle provenance in normalized records. Unknown values remain unknown. Inferred playful cues may be decorative and clearly labeled, but cannot change factual status or actions.
+- The renderer reports freshness and source coverage; preview/mock entries are optional, off by default, visibly labeled, and never counted as provider activity.
 
 ## Consequences
 
@@ -43,9 +44,11 @@ These references demonstrate patterns, not verified capabilities of this product
 - `pixel-agents-hq/pixel-agents` describes a provider-neutral hook-provider interface and normalized events; its README calls Claude the reference provider and Codex roadmap work.
 - `Pixel-Process-UG/agent-office` describes richer chat/task orchestration, but labels itself early development. Those control features are outside this read-only product scope.
 
-## Open question: provider discovery
+## Feasibility gates
 
-The baseline uses explicit provider events and hooks. Optional local discovery (for example, scanning provider-owned local session metadata) could improve visibility but can broaden access beyond sessions created/owned by this extension. Do not implement it under this decision. Compare the value, host feasibility, consent, privacy boundary, and ability to restrict discovery to user-selected sessions before proposing a separate accepted ADR. Discovery must not silently enumerate unrelated/private history.
+- Prove Codex `thread/list` and notification behavior against supported CLI versions, including whether metadata-only discovery can avoid transcript reads and how to represent archive/terminal states.
+- Verify local process execution and canvas-extension lifecycle in both VS Code and the Copilot App. Provider consent must be independent of canvas opening.
+- No supported general Copilot session-enumeration API has been established. Copilot's current-session-only support is acceptable for V1 if accurately labeled.
 
 ## Revisit when
 

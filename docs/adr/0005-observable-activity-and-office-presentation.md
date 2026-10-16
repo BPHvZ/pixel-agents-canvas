@@ -9,11 +9,12 @@ The office is a visualization of real provider activity, so visual delight must 
 
 ## Decision
 
-- Derive every provider-backed state only from normalized, timestamped events actually observed by that adapter. Preserve event provenance and provider identity in the model.
-- Map ambiguous, missing, stale, or unsupported signals to `unknown`, `idle`, or disconnected as appropriate; never leave stale work displayed as live and never imply a provider is connected without a successful connection signal.
-- Do not invent agent dialogue, task content, collaboration, or causal explanations. Use generic visual activity labels when the source does not provide an approved safe detail.
-- Keep optional preview/sample activity visually and textually distinct from provider-backed agents and disable it by default when real providers are connected.
-- Treat accessibility, keyboard operation, reduced-motion support, responsive layout, and readable status text as product acceptance qualities; animation is supplementary, not the sole carrier of status.
+- Derive factual identity, session/agent relationships, lifecycle, waiting/blocked state, completion, and freshness only from provider-established metadata/events. Preserve source and provenance.
+- Render one character per distinct provider-established agent identity, including reported subagents, grouped under the parent session. Rooms/clusters express that reported relationship only; they do not imply shared files/context.
+- Active sessions appear by default. Hide only provider-reported terminal states; an opt-in current-host-lifetime view may render them as sleeping/off-duty. Lack of recent events does not equal completion.
+- Distinguish unsupported provider, unavailable integration, confirmed empty result, stale/disconnected source, and active discovery. Include concise source health in the office and detailed coverage in an optional hidden-by-default view.
+- Playful inferred role/mood cues are permitted only when clearly marked as inference and strictly decorative; they cannot change factual labels, lifecycle, sorting, or actions. Do not invent dialogue, task content, collaboration, or causal explanations.
+- Preview is optional, separate, and explicitly labeled. Accessibility, keyboard operation, reduced motion, responsive layout, and readable status text are acceptance qualities; animation is supplementary.
 
 ## Consequences
 
