@@ -1,6 +1,6 @@
 # Pixel Agents Office: Product plan
 
-**Status:** Product refinement approved; implementation is tracked in [docs/implementation-progress.md](./docs/implementation-progress.md)
+**Status:** Phase 0 and UI design approved; implementation in progress, not release-ready. Verified delivery and remaining gates are tracked in [docs/implementation-progress.md](./docs/implementation-progress.md#status-snapshot--2026-10-17).
 **Last updated:** 2026-10-17
 
 ## Product goal
@@ -35,7 +35,18 @@ See [docs/phase-0-feasibility.md](./docs/phase-0-feasibility.md) for primary-sou
 
 ## Current implementation and gap
 
-The current canvas listens to hooks from its hosting Copilot App session and renders its observed session plus metadata-only Codex threads. After explicit opt-in, the Codex adapter paginates `thread/list` with `useStateDbOnly`, discards content-bearing fields, resumes active threads with `excludeTurns: true`, and tracks notifications for those threads. It no longer creates threads. Broader Copilot conversation enumeration, provider-identified agent/subagent rendering, accessibility-complete clustered layout, and the accepted stateful fictional office layer remain in progress. Preview/sample data is not a product substitute. The implementation tracker records verified slices and remaining gates.
+The committed initial implementation (`35e7fe7`) listens to hosting Copilot session hooks and renders its observed session plus metadata-only Codex threads. After explicit opt-in, the Codex adapter paginates `thread/list` with `useStateDbOnly`, discards unapproved content fields, resumes active threads with `excludeTurns: true`, and tracks notifications. It no longer creates threads. Runtime-compatible JavaScript and custom declarations pass ESLint and strict TypeScript; the 35-test suite includes negative no-`any` checks. The browser module is checked separately from HTML. Portable agent guides and skills were published in `d7bf978`, with the ADR/progress maintenance gate in `f8bab81`; CI passed for all three commits.
+
+The shared capability/health model and provider recovery are incomplete. Hosting-session hooks and unsupported-navigation disclosures need current-code host verification; unrelated Copilot conversation enumeration remains unsupported, not a promised future capability. Provider-identified agent/subagent clusters, factual event feed/coverage, accessibility, title controls/preferences, and the accepted fictional-office layer remain pending. The initial renderer/browser smoke check is not acceptance of ADR 0008 or release readiness. Preview/sample data is never a product substitute.
+
+### Next development sequence
+
+1. Complete unified provider capability/availability and recovery/lifecycle tests (ADRs 0001/0007).
+2. Verify current hosting-session wiring and reload/open/action/reopen behavior in both target hosts, reporting unperformed checks explicitly (ADRs 0001/0003/0007).
+3. Implement factual agent/session clusters, feed/coverage, accessible controls, and title visibility (ADRs 0002/0004/0005/0006).
+4. Implement the separate fictional-office layer and approved personalization/lifecycle rules (ADR 0008), then rerun representative UI scale and release checks.
+
+The [progress tracker](./docs/implementation-progress.md) holds command/CI evidence and detailed unchecked acceptance work. Phase 0 host/scale evidence does not validate later code changes.
 
 ## Proposed architecture
 

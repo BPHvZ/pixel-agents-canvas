@@ -2,6 +2,35 @@
 
 This checklist tracks the product plan in [PLAN.md](../PLAN.md) and decisions in [docs/adr](./adr). Check an item only when its evidence or verification is recorded. Keep this file current as each vertical slice lands; do not mark a phase complete while a gate is unresolved.
 
+## Status snapshot — 2026-10-17
+
+**Overall: implementation in progress; not release-ready.** Work remains in the original waddle worktree on `develop`. Phase 0 approval is a feasibility decision, not completion of the later product/release gates.
+
+| Phase | Status | Remaining acceptance work |
+|---|---|---|
+| 0 — Feasibility | Approved | Keep version-specific evidence and privacy/host limitations explicit |
+| 1 — Domain/core | In progress | Unified provider capabilities/availability integration and verification |
+| 2 — Codex discovery | Initial slice implemented | Recovery/reconnect, concurrent-pagination behavior, and cross-version validation |
+| 3 — Copilot/navigation | Partial | Validate current hosting-session wiring after reload; retain unsupported cross-session navigation disclosure |
+| 4 — Office UI | Design approved; initial renderer implemented | Agent/session clustering, factual feed/coverage, accessibility, preferences/motifs, and ADR 0008 ambience |
+| 5 — Release | Pending | Fresh verification in both hosts, provider combinations, updated UI scale/accessibility checks, and release documentation |
+
+### Delivered evidence
+
+- `532e672`: approved ADR/UI refinement, merged into `develop` by `633e1b2`; covers the accepted scope rather than claiming the UI exists.
+- `35e7fe7`: typed discovery/core and checked renderer/browser modules, ESLint/strict TypeScript, no-`any` policy regressions, and CI. Local `npm ci && npm run check` passed with **35 tests**; [implementation CI passed](https://github.com/BPHvZ/pixel-agents-canvas/actions/runs/39064977670). The local HTTP/Chrome check also verified module loading, polling updates, and a narrow viewport. This does not prove a host loaded the new extension.
+- `d7bf978`: portable root/subtree agent instructions and two project-owned skills; [CI passed](https://github.com/BPHvZ/pixel-agents-canvas/actions/runs/39065651959).
+- `f8bab81`: explicit accepted-ADR coverage gate and continuous product-plan/progress updates; links and skill frontmatter validated, and [CI passed](https://github.com/BPHvZ/pixel-agents-canvas/actions/runs/39066198324).
+
+### Next implementation slices
+
+1. Finish and test unified provider health/capability reporting and recovery/lifecycle handling (ADRs 0001/0007), keeping turn outcome distinct from session closure.
+2. Complete hosting-session adapter verification and reload/open/action/reopen checks for the current code in both hosts (ADRs 0001/0003/0007). Record unavailable checks rather than reusing Phase 0 evidence as current-code validation.
+3. Build provider-identified agent/session clusters and the factual roster/feed/coverage with accessibility and title visibility controls (ADRs 0002/0004/0005/0006).
+4. Add the separately tested fictional-office layer, customization, motifs, and prop/abandoned-cluster lifecycle (ADR 0008); preserve factual state and feed throughout.
+
+No product acceptance checkbox is advanced by this documentation-only status update. No new host or live-provider validation was performed for this update.
+
 ## Phase 0 — Feasibility and release gates
 
 - [x] Confirm official Codex app-server protocol documents thread listing (`thread/list`). Evidence: [OpenAI Codex app-server protocol](https://github.com/openai/codex/blob/main/codex-rs/app-server/README.md). This confirms the method exists; it does **not** yet prove that metadata-only live discovery works as required.
@@ -24,13 +53,14 @@ This checklist tracks the product plan in [PLAN.md](../PLAN.md) and decisions in
 - [x] Extend/test distinct session and agent identities, provider-established hierarchy, partial/unknown values, lifecycle, freshness, and independent provider availability. Evidence: `.github/extensions/pixel-agents-canvas/src/domain.js` and `test/domain.test.js` (Codex v2 schema generated from installed CLI 0.162.1).
 - [x] Test duplicate, malformed, out-of-order, missing, stale, and future-dated signals without false activity/completion. Evidence: `test/domain.test.js` and `test/state.test.js`.
 - [x] Add custom provider/domain/protocol types and checked JavaScript, including the separate browser module. Reproducible verification is now `npm run check`: ESLint (zero warnings), strict TypeScript with `noImplicitAny` and unchecked-index checks, and 35 tests. Lint rejects explicit `any` in declarations and JSDoc (including nested types and wildcard syntax); type-aware rules reject unsafe inferred values. Negative tests prove the policy. The SDK declaration is a type-only projection of the runtime-injected surface, not proof of host compatibility.
-- [ ] Normalize independent provider capability/availability through one adapter interface. Codex now reports its own connection/list/monitoring status; the shared Copilot/Codex availability model is not yet wired end-to-end.
+- [ ] Finish and verify independent provider capability/availability reporting through one adapter interface. Current wiring emits normalized Copilot/Codex status in `/state` and `list_agents`, with Codex connection/list/monitoring distinctions; capability reporting and end-to-end adapter/UI verification remain incomplete (ADRs 0001/0007).
 
 ## Phase 2 — Codex existing-session discovery
 
 - [x] Implement the explicit opt-in local app-server lifecycle after Phase 0 approval. The `Enable local Codex` canvas control starts the provider; shutdown unsubscribes tracked threads and terminates the child.
 - [x] Discover active and archived existing threads through paginated `thread/list`, using `useStateDbOnly: true`; field-select metadata, discard previews/turns/paths, resume active threads with `excludeTurns: true`, and preserve archive/turn/thread-close distinctions. Per-thread monitoring failures are distinct from provider process availability. Unit coverage: `test/codex-client.test.js`. CLI 0.163.0 live list/read-only verification was completed during Phase 0; a bulk live resume of all listed threads was intentionally not performed.
 - [ ] Complete provider recovery/reconnect, concurrent-pagination stability, and cross-version lifecycle validation. Current fixtures cover pagination, content-field discard, archive vs close, turn outcome vs thread state, and unsubscribe; domain tests cover reported hierarchy.
+
 ## Phase 3 — Copilot and navigation adapters
 
 - [ ] Implement supported hosting-conversation hooks with accurate narrow-scope labeling.
