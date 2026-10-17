@@ -11,7 +11,7 @@ Apply the [repository guide](../../../AGENTS.md). Read [ADR 0001](../../../docs/
 
 Use official SDK/protocol documentation and the supported CLI's schema to establish available methods, field meanings, notifications, timestamps, and supported versions. Record unsupported/unknown capabilities rather than guessing commands or reading history/auth/config files. Source-model vendor and billing do not identify the harness; a Copilot session using a proxy-backed model remains Copilot-sourced activity.
 
-The result is an evidence-backed adapter change with explicitly selected metadata fields. Existing Phase 0 reports are versioned evidence, not proof that a newer host or CLI behaves identically.
+Identify the accepted ADR covering the work before implementation; if coverage is missing or the decision changes, follow the repository guide's ADR approval gate. The result is an ADR-backed adapter change with evidence and explicitly selected metadata fields. Existing Phase 0 reports are versioned evidence, not proof that a newer host or CLI behaves identically.
 
 ## 2. Test through the adapter interface
 
@@ -36,4 +36,4 @@ Keep live output to counts, safe field names, versions, and generic outcomes. Ne
 
 ## 4. Record the supported scope
 
-Document methods/versions tested, commands/results, and untested failure/host paths in the [progress tracker](../../../docs/implementation-progress.md). Preserve source-level privacy wording: dropping content in an adapter is not an end-to-end host/model-route no-logging or zero-egress guarantee. Use [canvas-development](../canvas-development/SKILL.md) for host reload, canvas actions, and reopen verification when wiring or UI changes.
+After each development slice, update both the [product plan](../../../PLAN.md) and [progress tracker](../../../docs/implementation-progress.md): align current implementation/gaps and next steps with the accepted ADR; record that ADR, methods/versions tested, commands/results, blockers, and untested failure/host paths. Preserve source-level privacy wording: dropping content in an adapter is not an end-to-end host/model-route no-logging or zero-egress guarantee. Use [canvas-development](../canvas-development/SKILL.md) for host reload, canvas actions, and reopen verification when wiring or UI changes.

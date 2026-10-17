@@ -5,7 +5,7 @@ These repository instructions apply to any coding agent. More specific `AGENTS.m
 ## Start here
 
 - Read [PLAN.md](PLAN.md) for approved scope, [GLOSSARY.md](GLOSSARY.md) for domain language, and [implementation progress](docs/implementation-progress.md) for verified work and remaining gates. Accepted design is not proof of implementation.
-- Before changing a behavior, read its [ADR](docs/adr/): 0001/0007 for providers, 0002/0004 for privacy/retention, 0003 for host/product scope, 0005/0006/0008 for identity and office presentation. Update the relevant decision if the user approves a scope change; avoid parallel specifications.
+- Every feature and work item must be supported by an accepted [ADR](docs/adr/). Before starting, identify and reference the covering decision: 0001/0007 for providers, 0002/0004 for privacy/retention, 0003 for host/product scope, 0005/0006/0008 for identity and office presentation. Reuse existing ADRs for work within their scope; if none covers the work or it changes a decision, create or update an ADR and obtain approval before implementation. Avoid parallel specifications.
 - For canvas implementation or host lifecycle changes, follow [canvas-development](.agents/skills/canvas-development/SKILL.md). For discovery, provider events, privacy, or process recovery, follow [canvas-provider-validation](.agents/skills/canvas-provider-validation/SKILL.md). Read these files directly if your agent cannot discover skills.
 
 ## Product invariants
@@ -22,7 +22,7 @@ These repository instructions apply to any coding agent. More specific `AGENTS.m
 - Add behavior tests at public module interfaces; inject external process/time dependencies. For a bug, establish the failing behavior before fixing it. Keep synthetic activity confined to fixtures, never as a product fallback.
 - Use the smallest existing relevant check while iterating. Before delivering code, run `npm run check` from the repository root (lint, strict typecheck, tests); see [README development checks](README.md#development-checks) and [package scripts](package.json). Install declared dependencies with `npm ci` only when needed. Documentation-only work needs link/frontmatter validation; run documentation tests if introduced.
 - SDK declarations and unit/browser fixtures do not prove real host support. Report unperformed reload/open/action/reopen checks and other limitations explicitly.
-- Update directly affected documentation and the progress tracker with commands/results. Mark a checkbox complete only with its evidence, not merely because code exists. Report partial work as partial.
+- During development, keep both [the product plan](PLAN.md) and [the progress tracker](docs/implementation-progress.md) current after each implementation slice, not just at delivery. Keep plan scope, current implementation/gaps, and next steps aligned with accepted ADRs; record the covering ADR, verified progress, commands/results, and blockers in the tracker. Mark a checkbox complete only with evidence, not merely because code exists. Report partial work as partial.
 
 ## Workspace discipline
 

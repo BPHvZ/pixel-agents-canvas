@@ -11,7 +11,7 @@ Use the available editor, terminal, browser, and documented host interfaces; thi
 
 Read the relevant [plan](../../../PLAN.md), [progress item](../../../docs/implementation-progress.md), and ADR. For visuals, read [ADR 0008](../../../docs/adr/0008-stateful-office-ambience.md); it owns vignette eligibility/interruption, props, dialogue, motif/privacy controls, abandoned spaces, and the desk-setup exception. For provider semantics, also use [canvas-provider-validation](../canvas-provider-validation/SKILL.md).
 
-Identify the public module interface to exercise, the externally observable result, and which checks can prove it. The outcome of this step is a bounded behavior with a verification path, not a rewrite of the whole office.
+Identify the accepted ADR covering this work, the public module interface to exercise, the externally observable result, and which checks can prove it. If the work is not covered, follow the repository guide's ADR approval gate before implementation. The outcome is a bounded, ADR-backed behavior with a verification path, not a rewrite of the whole office.
 
 ## 2. Implement a typed vertical slice
 
@@ -39,4 +39,4 @@ If an operation is unavailable or unsafe, record exactly which host checks remai
 
 ## 5. Close the slice honestly
 
-Update the affected documentation and progress item with checks and limitations. Distinguish approved design, locally tested implementation, host-verified behavior, and release readiness. Deliver the change summary, checks run, and remaining gaps; preserve the user's branch/worktree and unrelated files.
+After each slice, update both the product plan's implementation/gaps and the progress item with the covering ADR, checks, limitations, and next steps. Keep these current during development, not only at final delivery. Distinguish approved design, locally tested implementation, host-verified behavior, and release readiness. Deliver the change summary, checks run, and remaining gaps; preserve the user's branch/worktree and unrelated files.

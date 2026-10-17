@@ -57,4 +57,6 @@ This checklist tracks the product plan in [PLAN.md](../PLAN.md) and decisions in
 
 ## Update protocol
 
-For each implementation slice: mark only verified checks complete, add the commit/PR or test evidence next to the item when useful, and note blockers under the owning phase. A checkbox is not complete merely because code exists; tests or reproducible host validation must pass.
+Before starting each work item, identify its covering accepted ADR; if none applies or the decision must change, create or update an ADR and obtain approval before implementation. Reuse existing decisions for work within their scope.
+
+After each development slice, update this tracker and [PLAN.md](../PLAN.md), not only at delivery. Keep the plan's current implementation/gaps and next steps aligned with accepted ADRs. Record the covering ADR, verified progress, commands/results, remaining work, and blockers here; add commit/PR references when useful. A checkbox is not complete merely because code exists; tests or reproducible host validation must pass.

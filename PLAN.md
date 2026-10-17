@@ -47,6 +47,8 @@ The current canvas listens to hooks from its hosting Copilot App session and ren
 
 ## Delivery phases and acceptance criteria
 
+Every feature and work item must be supported by an accepted ADR before implementation. Reuse existing decisions when they cover the work; create or update an ADR and obtain approval when coverage is missing or a decision changes. During development, update this plan and [implementation progress](./docs/implementation-progress.md) after each slice: keep current implementation/gaps and next steps accurate, and record the covering ADR, verified results, remaining work, and blockers in the tracker.
+
 ### Phase 0 — Feasibility / release gates
 - Verify current official app-server `thread/list`, metadata fields, lifecycle notifications, parent/subagent representation, archive/terminal semantics, pagination, and supported CLI versions. Demonstrate discovery of existing threads without reading transcript content in metadata-only mode.
 - Verify explicit process consent, local stdio launch/stop, host lifecycle, and source-level data minimization in both canvas runtimes. Do not claim host-wide zero-egress or absence of provider/runtime logging without an end-to-end audit.
