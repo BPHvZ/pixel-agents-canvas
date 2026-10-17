@@ -1,7 +1,7 @@
 # ADR 0006: Agent identity and office grouping
 
-- **Status:** Proposed
-- **Date:** 2026-10-16
+- **Status:** Accepted
+- **Date:** 2026-10-17
 
 ## Context
 
@@ -9,13 +9,16 @@ The inspiration projects use several visual models: `pixel-agents` describes one
 
 ## Decision
 
-Represent each provider-established agent identity as one character, including a top-level agent and separately identified subagents. Group characters into a session room/desk cluster only when the provider establishes the relationship. Never infer additional agents or hierarchy from tools, timing, task text, or visual role. Role/mood flourishes may be playful and explicitly labeled as inferred, but are decorative only and must not affect factual status, sort order, or actions.
+Represent each provider-established agent identity as one character, including a top-level agent and separately identified subagents. Group characters into a session cluster only when the provider establishes the relationship. Never infer additional agents or hierarchy from tools, timing, task text, or visual role. Stable deterministic appearance, optional local visual overrides, nicknames, and fictional voice flavors distinguish characters without asserting provider-reported roles, capabilities, or task knowledge. Office vignettes may cross session clusters only as explicitly fictional decoration; they do not change cluster membership or imply actual collaboration.
 
 ## Consequences
 
 - Sparse provider data may produce fewer characters or no subagent cluster; the office must not fill that gap with invented workers.
 - Session and agent identity are distinct domain concepts; multiple agents can belong to one session.
-- Layout remains generated from observed relationships in V1, not a user-editable persistent floor plan.
+- Activity identity follows the owning harness/source, not the model vendor. A proxy-routed Codex model in a Copilot CLI session is still a Copilot CLI activity source, not a Codex CLI thread.
+- Layout remains generated from observed relationships in V1, not a user-editable persistent floor plan. A physical office area may be reused after a session ends, but a new session never inherits the old provider identity or cluster metadata.
+- Local visual overrides are keyed by provider plus stable agent identity where available; session-scoped identities do not get fuzzy-merged across sessions. A nickname is prominent display text, while provider name/role remain separately available as factual identity.
+- Users may customize visual traits and nickname, but not assign task focus, role, or priority fields that could be mistaken for provider observations.
 
 ## Alternatives considered
 

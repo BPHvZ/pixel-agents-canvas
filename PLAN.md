@@ -1,31 +1,37 @@
 # Pixel Agents Office: Product plan
 
-**Status:** Product refinement approved; implementation not yet authorized by this document
-**Last updated:** 2026-10-16
+**Status:** Product refinement approved; implementation is tracked in [docs/implementation-progress.md](./docs/implementation-progress.md)
+**Last updated:** 2026-10-17
 
 ## Product goal
 
-Deliver a genuinely useful, installable, read-only session dashboard in a pixel-art office—not a demo presented as a product. Target one canvas experience in both VS Code and the GitHub Copilot App, and do not require a Copilot subscription for meaningful use. Show all Copilot/Codex coding-agent sessions only where supported host/provider APIs make them observable; disclose coverage differences rather than inventing activity. An optional preview is solely an explicitly labeled onboarding/test aid.
+Deliver a genuinely useful, installable, read-only session dashboard in a pixel-art office—not a demo presented as a product. Target one canvas experience in both VS Code and the GitHub Copilot App; a paid GitHub Copilot plan must not be required for meaningful use. The hosts may still require GitHub sign-in and may accept third-party model providers, BYOK, or proxy-backed model routes. Keep host, harness/activity source, model route, and billing as separate facts; show only what the relevant host exposes reliably, and never infer the activity provider from the selected model. Show all Copilot/Codex coding-agent sessions only where supported host/provider APIs make them observable; disclose coverage differences rather than inventing activity. An optional preview is solely an explicitly labeled onboarding/test aid.
 
 ## Product definition
 
 ### V1 dashboard
 
-The office is the primary view and must remain useful without sample data. For each observable session and provider-identified agent, show identity when available, provider and discovery source, provider-reported lifecycle/waiting state, safe task summary when available, last activity/freshness, and open/focus navigation when supported. Make missing fields explicit instead of fabricating values. Distinguish unsupported provider, supported-but-unavailable integration, connected with confirmed no sessions, stale/disconnected source, and discovered sessions.
+The office is the primary view and must remain useful without sample data. For each observable session and provider-identified agent, show identity when available, the activity source/harness and discovery source, provider-reported lifecycle/waiting state, safe task summary when available, and last activity/freshness. Offer open/focus only where a public host route is supported and tested. Keep model and billing routes out of the default office; optional details may show them only when the host reports them reliably. Make missing fields explicit instead of fabricating values. Distinguish unsupported activity source, supported-but-unavailable integration, connected with confirmed no sessions, stale/disconnected source, and discovered sessions.
 
-Represent each distinct provider-established agent identity—including separately identified subagents—as a character, grouped into a session room/desk cluster only when the relationship is provider-reported. Do not infer extra workers or hierarchy from tool events/text. Room layout is generated, not user-editable in V1, and does not imply shared files or workspace. Playful role/mood cues may be activity-derived if clearly marked as inference and strictly decorative; they never alter factual lifecycle, sorting, or actions.
+Represent each distinct provider-established agent identity—including separately identified subagents—as a character, grouped into a session cluster only when the relationship is provider-reported. Do not infer extra workers or hierarchy from tool events/text. The shared office floor and clusters do not imply shared files or workspace. Stable character appearance, local nickname, and fictional voice flavor are decorative, not provider roles or task knowledge. Office-wide fictional vignettes may cross clusters without asserting collaboration; they never alter factual lifecycle, sorting, or actions. See [ADR 0008](./docs/adr/0008-stateful-office-ambience.md) for the factual/fictional boundary and office-world lifecycle.
 
-Show active sessions by default. Hide provider-reported terminal sessions; offer a setting to show terminal sessions observed during the current host lifetime as sleeping/off-duty. Never infer completion from an idle timeout. Keep a compact source-health indicator in the office; expose detailed coverage in an optional, hidden-by-default secondary view.
+Show active sessions by default. Hide provider-reported terminal sessions; offer a setting to show terminal sessions observed during the current host lifetime as sleeping/off-duty. Never infer completion from an idle timeout. Keep a compact source-health indicator in the office and a recent global feed of generic provider transitions; expose detailed coverage in an optional, hidden-by-default secondary view.
+
+The office uses state-specific theatrical animation with readable factual status labels. Only provider-explicit idle agents may join authored vignettes; real working signals immediately end the scene. Vignettes and dialogue have separate user toggles and never appear in the factual feed. Office props persist for the open canvas lifetime and are visibly tidied; abandoned clusters are triggered only by explicit provider closure, not stale/disconnected or turn-complete signals. See [ADR 0008](./docs/adr/0008-stateful-office-ambience.md) for scene cadence, dialogue, motifs, user customization, cleanup, and abandoned-cluster behavior.
 
 ### Interaction and boundary
 
-Read-only means the extension never launches a model turn, sends/steers a prompt, assigns work, stops/pauses an agent, or orchestrates. Users may open/focus an underlying conversation only when a documented host/provider navigation API supports it. One user/current host context only in V1; no shared-office synchronization. Do not impose an arbitrary product cap; establish practical performance limits by testing.
+Read-only means the extension never launches a model turn, sends/steers a prompt, assigns work, stops/pauses an agent, or orchestrates. Users may open/focus an underlying conversation only when a documented host/provider navigation route is supported and tested; otherwise disclose navigation as unavailable rather than guessing. One user/current host context only in V1; no shared-office synchronization. Do not impose an arbitrary product cap; establish practical performance limits by testing.
 
 ### Data and consent
 
-Provider metadata is the default source for sanitized task summaries. Prompt summarization is a separate setting, off by default, persisted as a preference only. When explicitly enabled, it must process on-device/transiently, display only the summary, immediately discard raw prompt text, avoid content-bearing logs, and allow disablement. Keep activity timeline and all discovered activity in memory only; clear it when the extension/host closes. No session content, prompts, summaries, or activity timeline may be sent externally. If these properties cannot be demonstrated in a host, prompt summarization stays unavailable there.
+Provider metadata is the default source for sanitized task summaries, but a provider title/name is not inherently sanitized and may contain sensitive user text. Show a bounded provider title in the roster by default with global and per-session hide controls; identify it as a provider title, not as a verified-safe summary. Title-derived scene motifs are deterministic local decoration; hiding the title text does not hide the motif, and the control must disclose this. For Codex thread listing, never surface `preview`, transcript turns, prompt text, tool input/output, file paths, or credentials. Activity callbacks must ignore content-bearing arguments and retain only generic statuses unless a specific field is explicitly approved. The dashboard adapter does not intentionally expose or retain prompt/tool content; this source-level statement is not a guarantee about host/runtime/provider/proxy egress or logging. Prompt summarization remains off and unavailable until its on-device/transient/log-free properties are demonstrated across both host and selected model route. Keep factual activity in memory only; clear it when the extension/host closes. Office props are separate fictional presentation state, cleared when the canvas closes.
 
-Enable providers independently. Codex discovery can start an extension-managed local `codex app-server` over stdio only after explicit user enablement; it is not a separate companion app, stops with the extension, and does not read auth/config files. Copilot support may be limited to the hosting conversation. Do not require equal coverage; show the source limitations. A ChatGPT subscription is not assumed to grant Codex CLI access.
+Enable activity sources independently. A Copilot CLI harness routed through an OpenAI/Codex model remains a Copilot CLI activity source; its model vendor and billing route are not the source identity. Separately, Codex CLI/app-server can discover Codex-owned threads after explicit user enablement and only through supported metadata-first interfaces. This uses the user's installed/authenticated Codex CLI; do not infer CLI access or billing eligibility from a ChatGPT subscription alone. Copilot SDK hooks may be limited to the hosting Copilot conversation. Do not require equal coverage; show source limitations.
+
+## Phase 0 feasibility gate (2026-10-17)
+
+See [docs/phase-0-feasibility.md](./docs/phase-0-feasibility.md) for primary-source citations and live Codex CLI findings. Codex-owned thread discovery and list pagination are confirmed against CLI 0.163.0 with `useStateDbOnly`; do not read or display the protocol's `preview` field. Copilot App and VS Code use distinct packaging/runtime models. The user's Copilot App BYOK session without a paid plan loaded and rendered this project canvas; the Copilot App extension launch path is verified. Codex app-server launch from that host is verified; VS Code extension discovery/running is verified in this active Copilot CLI custom-endpoint/VibeProxy session without a paid plan. The Codex app-server also starts independently here and creates an empty thread without a turn. Generic VS Code BYOK sessions separately require `chat.agentHost.byokModels.enabled`. Prompt summarization is unavailable until its local/transient/log-free boundary is proven. Navigation to discovered Codex threads remains unverified. Copilot App session-shutdown cleanup was verified after the test session owner detached; full App shutdown/crash behavior remains unverified. **Phase 0 decision: GO — approved to proceed to Phase 1.** The user accepts standard host/workspace trust and deliberately loading this project canvas as consent to project-extension execution; Codex process startup still requires separate explicit opt-in. Copilot App first-party docs do not promise a separate project-extension trust prompt, so do not claim one exists. Whole-host abrupt-crash cleanup has no universal guarantee; normal cleanup and tested child-process exit paths are accepted for Phase 0, with graceful cleanup and restart safety required. The Copilot CLI custom-endpoint path and independent Codex app-server path are live-verified in both desktop hosts. Privacy scope is a narrow source-level data-minimization statement; do not claim global zero-egress. Prompt summarization is deferred. Navigation is resolved: users open the canvas from its owning session; unsupported cross-session navigation is omitted. The renderer passed the agreed 100-session/300-agent synthetic scale check (see [docs/phase-0-rendering-scale.md](./docs/phase-0-rendering-scale.md)). Host consent evidence and limits: [docs/phase-0-host-consent-lifecycle.md](./docs/phase-0-host-consent-lifecycle.md).
 
 ## Current implementation and gap
 
@@ -34,20 +40,20 @@ The current canvas listens to hooks from its hosting Copilot App session and dis
 ## Proposed architecture
 
 1. **Canvas shell and host packaging** — Keep the canvas as the product surface. Validate supported extension packaging, process/runtime permissions, and lifecycle in both target hosts. A single artifact is the goal; allow host-specific packaging that shares product/core code if required rather than weakening access or requiring a Copilot subscription.
-2. **Provider-neutral domain model** — Normalize provider sessions, agent identities, reported parent/session relationships, lifecycle, safe summary, timestamps, freshness, discovery source, and capabilities. Preserve provenance and represent absence/unknown explicitly.
-3. **Independent adapters** — Copilot consumes supported hosting-session hooks; Codex uses an explicitly enabled local stdio app-server candidate. Adapter states must distinguish unsupported, unavailable, confirmed empty, stale/disconnected, and active discovery.
+2. **Provider-neutral domain model** — Normalize activity-source-owned sessions, agent identities, reported parent/session relationships, lifecycle, provider titles, timestamps, freshness, discovery source, and capabilities. Preserve provenance and represent absence/unknown explicitly; keep host, harness/activity source, model route, and billing route separate.
+3. **Independent adapters** — Copilot CLI hooks consume the hosting Copilot CLI session only; selecting a Codex/OpenAI model through a proxy does not turn it into a Codex CLI activity source. A separate Codex adapter uses the explicitly enabled local stdio app-server to discover Codex CLI-owned threads. Adapters distinguish unsupported, unavailable, confirmed empty, stale/disconnected, and active discovery.
 4. **Office and coverage views** — Main view maps provider-established agents into session clusters and prioritizes active work. An optional hidden-by-default view explains provider scope, availability, discovered session count, freshness, and known limitations. Both views expose accessible textual status; animation is supplementary.
-5. **Privacy boundary** — Field-select provider metadata; never copy full payloads. Default to metadata summaries and transient in-memory activity. Gate prompt summarization behind explicit consent and demonstrable local-only transient handling. Persist only that setting.
+5. **Privacy boundary** — Field-select provider metadata; never copy full payloads. Discard Codex `preview`/turns and ignore content-bearing Copilot hooks. Provider titles are labeled as such, bounded, hideable, and may be sensitive; hiding title text does not hide derived motifs. Keep provider activity and fictional scene state transient; persist only user-selected appearance/display preferences. Prompt summarization is out of scope for V1 pending an end-to-end audit and separate approval.
 
 ## Delivery phases and acceptance criteria
 
 ### Phase 0 — Feasibility / release gates
 - Verify current official app-server `thread/list`, metadata fields, lifecycle notifications, parent/subagent representation, archive/terminal semantics, pagination, and supported CLI versions. Demonstrate discovery of existing threads without reading transcript content in metadata-only mode.
-- Verify explicit process consent, local stdio launch/stop, host lifecycle, and no external session-data transmission in both canvas runtimes.
+- Verify explicit process consent, local stdio launch/stop, host lifecycle, and source-level data minimization in both canvas runtimes. Do not claim host-wide zero-egress or absence of provider/runtime logging without an end-to-end audit.
 - Verify official host navigation/open-focus capability, or document its absence.
-- Verify canvas extension installation/packaging and useful operation without a Copilot subscription. Test whether one artifact works in both hosts; decide packaging accordingly.
-- Confirm the host's prompt hook delivery and ensure opt-in summarization can be transient/on-device with raw prompt discard. Otherwise omit that setting per host.
-- **Gate:** if a required capability is unsupported, narrow and clearly label that source's coverage; do not substitute simulation. Revisit product viability only if no provider path can meet the minimum usefulness bar.
+- Verify canvas extension installation/packaging and useful operation without an active paid GitHub Copilot plan, using the documented third-party-model/BYOK or proxy routes as appropriate. Test whether one artifact works in both hosts; decide packaging accordingly. GitHub sign-in may still be required by the host.
+- Prompt summarization is deferred for V1 because the local/transient/log-free boundary is not established. Revisit only after an end-to-end host/runtime/model-route audit and a separate user decision.
+- **Gate:** if a required capability is unsupported, narrow and clearly label that source's coverage; never substitute fictional office activity for missing provider activity. Revisit product viability only if no provider path can meet the minimum usefulness bar.
 
 ### Phase 1 — Domain and provider-neutral core
 - Implement/test session-versus-agent identity, provider-established hierarchy, provenance, partial/unknown values, terminal states, stale/fresh status, and independent provider availability.
@@ -55,7 +61,7 @@ The current canvas listens to hooks from its hosting Copilot App session and dis
 
 ### Phase 2 — Codex existing-session discovery
 - After Phase 0 validation, implement explicit opt-in local app-server lifecycle and list/subscribe metadata for supported existing threads.
-- Do not access transcripts unless prompt-summary consent is enabled; even then enforce the separate privacy contract.
+- Do not access prompts, transcripts, or tool payloads for V1 task summaries or office personalization; prompt summarization is deferred pending an end-to-end audit and a separate product decision.
 - Test pagination, process failure/restart, archive/completion, thread ownership boundaries, relationships, and cleanup with fixtures plus a live CLI where available.
 
 ### Phase 3 — Copilot and navigation adapters
@@ -65,7 +71,7 @@ The current canvas listens to hooks from its hosting Copilot App session and dis
 
 ### Phase 4 — Product UI and consent
 - Build clustered agent representation, active-first filter, opt-in current-run sleeping/off-duty view, optional coverage panel, safe summaries, freshness, and explicit per-source states.
-- Add prompt-summary consent only where local-only transient handling is proven; persist preference only and show a processing indicator.
+- Implement the approved factual/fictional office presentation and personalization in [ADR 0008](./docs/adr/0008-stateful-office-ambience.md); do not implement prompt-summary consent in V1.
 - Meet keyboard, screen-reader, reduced-motion, responsive, and readable status acceptance criteria.
 
 ### Phase 5 — Distribution and release verification
@@ -74,18 +80,16 @@ The current canvas listens to hooks from its hosting Copilot App session and dis
 
 ## Decisions already made
 
-See ADRs 0001–0007. In brief: read-only local-first dashboard; one product targeting both hosts with truthful host-specific scope; no Copilot subscription gate; independent providers; explicit Codex process consent; supported API discovery only; transient timeline; metadata summaries by default; explicit opt-in prompt processing only if locally enforceable; provider-established agent identities/relationships; active sessions by default; optional coverage and inactive-session views; no simulation as fallback.
+See ADRs 0001–0008. In brief: read-only local-first factual dashboard with a separately labeled fictional office layer; one product targeting both hosts with truthful host-specific scope; no Copilot subscription gate; independent providers; explicit Codex process consent; supported API discovery only; transient provider activity; metadata summaries by default; prompt summarization out of scope for V1; provider-established agent identities/relationships; active sessions by default; optional coverage and inactive-session views. Fiction is never a substitute for missing provider activity.
 
 ## Unresolved validation questions
 
-These are research/acceptance gates, not silently assumed product decisions:
+These are ongoing validation and release-verification items, not silently assumed product decisions:
 
 - Does Codex app-server `thread/list` expose enough safe metadata for useful summaries/status without transcript reads, and can it report subagent identities/links across supported CLI versions?
-- Can canvas extension lifecycle launch and manage a local child process consistently in both hosts, with user consent and deterministic cleanup?
-- What session-opening/navigation command is officially supported in each host/provider?
-- Can the same installable artifact work in both hosts without a Copilot subscription, or is shared-core host-specific packaging required?
-- Can prompt text be summarized on-device transiently in both hosts without host-side external processing, content logs, or retained raw text?
-- What practical maximum agent/session count meets performance and accessibility expectations?
+- Can the same installable artifact work in both hosts, or is shared-core host-specific packaging required?
+- Can prompt text be summarized on-device transiently in both hosts without host-side external processing, content logs, or retained raw text? Until proven, this remains out of scope.
+- Continue accessibility and representative live-data checks beyond the synthetic 100-session/300-agent renderer smoke test.
 
 ## Inspiration and evidence
 

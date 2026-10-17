@@ -1,30 +1,30 @@
 # ADR 0005: Observable activity and office presentation
 
-- **Status:** Proposed
-- **Date:** 2026-10-16
+- **Status:** Accepted
+- **Date:** 2026-10-17
 
 ## Context
 
-The office is a visualization of real provider activity, so visual delight must not imply signals the integrations did not observe. ADR 0001 already requires fresh connection state, unknown/disconnected fallbacks, and no invented activity. Inspiration examples show real-event-driven reactions and role-specific animations (`agent-virtual-office`), richer agent dialogue/task management (`agent-office`), and animated state mapped from provider events (`pixel-agents`). These features are observed in their public project descriptions; they are not evidence that this product receives the same signals.
+The office visualizes provider activity while also providing a fictional, stateful office world. Its visual layer must remain legible as fiction and must never overwrite or masquerade as provider signals. The source review compared actual UI implementations: [Agent Virtual Office](https://github.com/KbWen/agent-virtual-office/blob/460d71db3b41746748e53e881d7ecd08e1207f60/src/systems/officeLife.js) stages coffee-break events but prioritizes live pulses; [Agent Office](https://github.com/Pixel-Process-UG/agent-office/blob/da62eee3bb054d0500b15ace53dd005adcfa512d/src/WelcomeOnboarding.tsx) collects focus/presence for agents it manages; [Pixel Agents](https://github.com/pixel-agents-hq/pixel-agents/blob/main/webview-ui/src/office/components/ToolOverlay.tsx) presents real tool/subagent activity in overlays. Their presentation patterns inform this design; their data and orchestration scopes are not adopted. Detailed fictional-office and lifecycle rules are recorded in [ADR 0008](./0008-stateful-office-ambience.md).
 
 ## Decision
 
-- Derive factual identity, session/agent relationships, lifecycle, waiting/blocked state, completion, and freshness only from provider-established metadata/events. Preserve source and provenance.
+- Derive factual identity, session/agent relationships, lifecycle, waiting/blocked state, terminal state, and freshness only from the activity source that owns the session and its provider-established metadata/events. Preserve that source and provenance; do not infer it from model or billing vendor.
 - Render one character per distinct provider-established agent identity, including reported subagents, grouped under the parent session. Rooms/clusters express that reported relationship only; they do not imply shared files/context.
 - Active sessions appear by default. Hide only provider-reported terminal states; an opt-in current-host-lifetime view may render them as sleeping/off-duty. Lack of recent events does not equal completion.
 - Distinguish unsupported provider, unavailable integration, confirmed empty result, stale/disconnected source, and active discovery. Include concise source health in the office and detailed coverage in an optional hidden-by-default view.
-- Playful inferred role/mood cues are permitted only when clearly marked as inference and strictly decorative; they cannot change factual labels, lifecycle, sorting, or actions. Do not invent dialogue, task content, collaboration, or causal explanations.
-- Preview is optional, separate, and explicitly labeled. Accessibility, keyboard operation, reduced motion, responsive layout, and readable status text are acceptance qualities; animation is supplementary.
+- Stable character looks, aliases, and voice flavors are decorative, not provider-reported roles or personalities. Authored dialogue and office-wide vignettes are permitted only under the fiction/fact separation and lifecycle rules in ADR 0008; no prompt/task text is used to generate them.
+- Provider titles may appear as titles, not as guaranteed-sanitized summaries. Preview remains separate and is never displayed. Model/billing details are not part of default activity cards and may only appear in a separate details view when a host reports them reliably. Accessibility, keyboard operation, reduced motion, responsive layout, and readable status text remain acceptance qualities.
 
 ## Consequences
 
 - Provider adapters need explicit event-to-state mapping and stale-state tests; unsupported provider events must not be guessed.
 - UI copy and visuals should expose source, connection health, and freshness without exposing private provider payloads.
-- Ambient animations may decorate the office but cannot change the perceived factual state of an agent.
+- Office props and theatrical transitions have their own open-canvas lifetime and must never enter provider state, session history, or the factual event feed.
 
 ## Alternatives considered
 
-1. **Use plausible/simulated activity whenever event coverage is incomplete.** Rejected: users cannot distinguish observation from fabrication.
+1. **Use plausible/simulated events as a substitute for missing provider activity.** Rejected: users cannot distinguish observation from fabrication. Clearly labeled office fiction is permitted only as a separate layer under ADR 0008.
 2. **Render raw provider event text as speech bubbles.** Rejected: it risks leaking private content and conflates personality with factual status.
 3. **Make animation the only status indicator.** Rejected: it is inaccessible and ambiguous, especially with reduced motion enabled.
 
