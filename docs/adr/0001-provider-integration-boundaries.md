@@ -13,18 +13,22 @@ The installed Copilot SDK author guide lists extension hooks including session s
 
 Use a provider-neutral session/agent model behind independent, capability-reporting adapters. Discovery is permitted only through supported provider protocols, with explicit provider enablement where it launches a local process. Preserve provider/source provenance and represent missing values as unknown; do not enumerate via scraping, undocumented APIs, or auth/config-file inspection.
 
-- Copilot consumes supported hooks for the hosting conversation. Broader Copilot session enumeration is not established by available evidence; do not promise it or use undocumented discovery.
-- Codex may use an explicitly enabled, extension-managed local stdio app-server. The official protocol documents `thread/list` and lifecycle notifications, making broader existing-thread discovery a validation target. Restrict to metadata and provider-reported relationships; do not access transcript content unless separate prompt-summary consent is enabled. Do not use a remote WebSocket listener or read auth/config files.
+- Copilot consumes supported hooks for the hosting Copilot CLI conversation only. Broader Copilot session enumeration is not established by available evidence; do not promise it or use undocumented discovery. The harness/session remains the activity source even when it routes inference to an OpenAI/Codex model through a proxy.
+- Codex CLI-owned threads may use an explicitly enabled, extension-managed local stdio app-server. The official protocol documents `thread/list` and lifecycle notifications, making existing-thread discovery feasible where the supported runtime permits it. Restrict to approved metadata and provider-reported relationships; discard `preview` and turns. Do not use a remote WebSocket listener or read auth/config files.
 - Adapters report independently whether a provider is unsupported, unavailable, connected with no sessions, stale/disconnected, or returning sessions. A confirmed empty result requires successful discovery.
 - One character represents each provider-established agent identity, including a top-level agent and distinct reported subagents, grouped by their provider-established session relationship. Do not infer agents or hierarchy from tool events or text.
 - Preserve source, identity, timestamp, and lifecycle provenance in normalized records. Unknown values remain unknown. Inferred playful cues may be decorative and clearly labeled, but cannot change factual status or actions.
-- The renderer reports freshness and source coverage; preview/mock entries are optional, off by default, visibly labeled, and never counted as provider activity.
+- The renderer reports freshness and source coverage; preview/mock entries are optional, off by default, visibly labeled, and never counted as provider activity. Clearly labeled fictional office ambience is a separate presentation layer governed by [ADR 0008](./0008-stateful-office-ambience.md); it is never normalized or reported as provider activity.
+
+## Phase 0 approval (2026-10-17)
+
+Phase 0 is approved to proceed to Phase 1. The user accepts standard host/workspace trust and deliberately opening this project canvas as consent to project-extension execution. Host docs do not establish a separate Copilot App project-loader approval prompt; product messaging must not imply one. Codex process execution is distinct and requires explicit user opt-in. Tested graceful shutdown and parent/stdio child-exit paths are sufficient for Phase 0; avoid promises of universal cleanup after arbitrary host crashes. See [phase-0-host-consent-lifecycle.md](../phase-0-host-consent-lifecycle.md).
 
 ## Consequences
 
 - The extension can work with a Copilot App session without requesting a Copilot token, while support remains limited to that session.
-- Codex can be integrated through a documented client protocol, but users need a supported local Codex CLI installation and valid Codex access. A ChatGPT subscription alone is not assumed sufficient.
-- Codex process launching and permissions require explicit user approval and a robust stop/reconnect lifecycle. The initial lifecycle uses explicit enablement and creates only empty ephemeral threads; it never sends a prompt or starts a model turn.
+- Codex CLI-owned thread activity uses the local Codex app-server adapter and requires supported CLI access. ChatGPT/Codex billing, a model route through a proxy, and the session's harness are separate facts. For example, Codex model billing through a proxy inside a Copilot CLI session does not make that session discoverable through Codex `thread/list`; a ChatGPT subscription alone does not guarantee local Codex CLI authentication.
+- Codex process launching and permissions require explicit user approval and a robust stop/reconnect lifecycle. The Phase 0 probe created an empty ephemeral thread only to verify host routing; the product adapter is read-only, discovers existing threads, and does not create threads or start model turns.
 - Provider adapters can be tested independently with recorded/synthetic protocol fixtures, even where live accounts are unavailable.
 - The normalized event model avoids binding the UI to provider-specific protocol details.
 
@@ -38,11 +42,13 @@ Use a provider-neutral session/agent model behind independent, capability-report
 
 ## Inspiration-project observations
 
-These references demonstrate patterns, not verified capabilities of this product:
+These references were reviewed against current repository source on 2026-10-17, not just README claims. They are implementation examples, not evidence that this product's host exposes identical capabilities. Their concrete patterns are accepted as design inputs for the provider seam, status normalization, freshness, and office layout:
 
-- `KbWen/agent-virtual-office` describes real event/status integrations including Codex CLI/App, with actual session state and no invented dialogue.
-- `pixel-agents-hq/pixel-agents` describes a provider-neutral hook-provider interface and normalized events; its README calls Claude the reference provider and Codex roadmap work.
-- `Pixel-Process-UG/agent-office` describes richer chat/task orchestration, but labels itself early development. Those control features are outside this read-only product scope.
+- [`KbWen/agent-virtual-office`](https://github.com/KbWen/agent-virtual-office) has useful status normalization, local-file freshness filtering, and session merging. Its Codex CLI/App adapters rely on helper-written status files or a manual bridge; they do **not** enumerate native Codex threads. Reuse its explicit status vocabulary and stale-entry concept, not its synthesized file/branch identities or bridge as proof of Codex discovery.
+- [`pixel-agents-hq/pixel-agents`](https://github.com/pixel-agents-hq/pixel-agents) has a useful normalized `AgentEvent` provider contract and explicit subagent/team relationships. Current registered provider is Claude-only and its fallback/hooks read transcript or hook content; Codex is roadmap, not shipped. Reuse the adapter seam and provider-established hierarchy principle, but keep transcript handling and Claude-specific assumptions out of this metadata-only product.
+- [`Pixel-Process-UG/agent-office`](https://github.com/Pixel-Process-UG/agent-office) has a concrete persistent office data model and a map/list layout, but its agents are office-owned, orchestrated workers—not discovered external session identities. It also includes task assignment/chat/runtime execution, which remain outside our read-only scope. Its code is MIT; asset rights must be checked separately before reuse.
+
+Common transferable patterns: independent provider adapters, normalized lifecycle state, local freshness/health indicators, and clear scope disclosures. Do not copy repository code/assets without checking each license; all three codebases report MIT, but graphics/fonts/assets may carry separate terms.
 
 ## Feasibility gates
 
