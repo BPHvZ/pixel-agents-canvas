@@ -34,3 +34,14 @@ npm run check
 Tooling dependencies live at the repository root; the project extension has no package manifest or installed SDK dependency. The host injects the SDK at runtime; the small local SDK declaration describes only the surface used here and does not replace host/runtime verification. The browser module is checked too, rather than hidden inside an HTML string.
 
 The implementation is not release-complete. Provider recovery, full agent/session clustering, the accepted office-ambience UI, and fresh host reload verification remain tracked in [implementation progress](docs/implementation-progress.md).
+
+## AI-assisted development
+
+[AGENTS.md](AGENTS.md) is the shared, tool-agnostic entry point. [The extension guide](.github/extensions/pixel-agents-canvas/AGENTS.md) adds SDK, renderer, storage, and lifecycle guidance for that subtree. These point to the plan, glossary, ADRs, and verified progress rather than replacing them.
+
+Two project-owned skills use the portable `SKILL.md` format under `.agents/skills/`:
+
+- [canvas-development](.agents/skills/canvas-development/SKILL.md): implement and verify canvas/UI/action/lifecycle changes.
+- [canvas-provider-validation](.agents/skills/canvas-provider-validation/SKILL.md): validate provider discovery, events, privacy, and process recovery.
+
+Agents that support skill discovery can load the relevant workflow on demand. Otherwise, read its linked file directly; no slash-command support, specific editor, model configuration, or vendor-specific agent tools are required. Other locally installed skill bundles are not required by this repository's workflow.
