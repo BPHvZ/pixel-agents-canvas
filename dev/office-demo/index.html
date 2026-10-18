@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="dark">
+  <title>Pixel Agents Office · Demo player</title>
+  <link rel="stylesheet" href="./player.css">
+  <script type="module" src="./player.js"></script>
+</head>
+<body>
+  <main class="demo-shell">
+    <header class="demo-header">
+      <div>
+        <p class="eyebrow">Developer preview · local mock data only</p>
+        <h1>Pixel Agents Office <span>Demo player</span></h1>
+        <p class="intro">Explore named UI scenarios rendered by the production office renderer. Nothing here is live provider activity.</p>
+      </div>
+      <strong class="mock-badge">MOCK DATA</strong>
+    </header>
+
+    <section class="player panel" aria-label="Scenario player controls">
+      <div class="player-controls">
+        <label class="scenario-picker">Scenario
+          <select id="scenario-select"></select>
+        </label>
+        <button id="next" type="button">Next</button>
+        <button id="play" type="button">Play</button>
+        <label class="seed-field">Seeded random
+          <input id="seed" type="text" value="42" maxlength="32" autocomplete="off" aria-label="Random seed">
+        </label>
+        <button id="random" type="button">Random</button>
+        <button id="stop" type="button" disabled>Stop</button>
+      </div>
+      <p id="player-status" role="status" aria-live="polite">Choose a scenario or start playback.</p>
+      <div class="view-controls">
+        <label>Preview width
+          <select id="viewport">
+            <option value="wide">Wide · 1100 px</option>
+            <option value="tablet">Tablet · 820 px</option>
+            <option value="narrow">Narrow · 390 px</option>
+          </select>
+        </label>
+        <label class="check-label"><input id="reduced-motion" type="checkbox"> Force reduced motion</label>
+      </div>
+    </section>
+
+    <div class="demo-grid">
+      <aside class="scenario-panel panel" aria-labelledby="scenario-list-title">
+        <h2 id="scenario-list-title">Scenario coverage</h2>
+        <p class="muted">Select a named scenario. Coverage labels describe the mock state shown.</p>
+        <ol id="scenario-list" class="scenario-list"></ol>
+      </aside>
+      <section class="preview-panel" aria-label="Production office preview">
+        <div class="preview-label"><span>Production renderer</span><span id="current-scenario"></span></div>
+        <iframe id="office-preview" title="Pixel Agents Office mock-data preview" sandbox="allow-scripts allow-same-origin"></iframe>
+      </section>
+    </div>
+    <footer>Developer-only page. Synthetic agents, sessions, events, titles, and preferences are invented fixtures. No provider adapters, host APIs, credentials, or external network connections are used.</footer>
+  </main>
+</body>
+</html>

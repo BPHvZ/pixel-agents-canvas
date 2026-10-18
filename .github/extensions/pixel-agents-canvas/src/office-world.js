@@ -16,7 +16,7 @@ const DIALOGUE_LINES = {
     "dry-witted": ["That paper stack is gaining altitude.", "The chair has plans of its own.", "A serious meeting with a mug.", "The clock is winning again."],
     earnest: ["A little care makes home.", "One small thing at a time.", "This corner feels brighter now.", "A kind pause can help."],
     calm: ["There is room for a quiet breath.", "The light moves gently here.", "Let the afternoon take its time.", "A peaceful corner is enough."],
-    upbeat: ["A little sunshine for this corner!", "The office plants look splendid today!", "What a lovely day for a stretch!", "This desk has excellent company."],
+    upbeat: ["A little sunshine makes this corner feel warm and welcoming today.", "The office plants look splendid today!", "What a lovely day for a stretch!", "This desk has excellent company."],
 };
 /** @type {{kind: import('./world-types.js').OfficeEffectKind, label: string}[]} */
 const HAUNTS = [
@@ -223,7 +223,7 @@ export function createOfficeWorld({ clock = Date.now, random = Math.random } = {
         }
         const text = nextLine();
         if (!text) return;
-        const wordCount = text.trim().split(/\\s+/).length;
+        const wordCount = text.trim().split(/\s+/u).length;
         const duration = Math.max(3000, Math.min(8000, wordCount * 300));
         dialogue.push({ id: `dialogue:${++sequence}`, agentId: agent.id, flavor, label: "Fictional character dialogue", text, startedAt: now, endsAt: now + duration, placement: "secondary", fictional: true });
         lastDialogueAt.set(agent.id, now);

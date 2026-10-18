@@ -471,15 +471,15 @@ test("dialogue timers include unknown and ended characters, use authored lines a
     const bubbles = h.world.view().dialogue;
     assert.equal(bubbles.length, agents.length);
     for (const bubble of bubbles) {
-        const words = bubble.text.trim().split(/\\s+/).length;
+        const words = bubble.text.trim().split(/\s+/u).length;
         const expectedDuration = Math.max(3000, Math.min(8000, words * 300));
         assert.equal(bubble.endsAt - bubble.startedAt, expectedDuration);
         assert.equal(bubble.label, "Fictional character dialogue");
         assert.equal(bubble.fictional, true);
         assert.ok(words <= 12);
-        assert.doesNotMatch(bubble.text, /\\b(?:working|waiting|failed|unknown|idle|ended)\\b/i);
+        assert.doesNotMatch(bubble.text, /\b(?:working|waiting|failed|unknown|idle|ended)\b/i);
     }
-    h.at(18000);
+    h.at(20000);
     assert.equal(h.world.view().dialogue.length, 0);
     h.at(29999);
     assert.equal(h.world.view().dialogue.length, 0);
@@ -496,6 +496,22 @@ test("dialogue timers include unknown and ended characters, use authored lines a
     assert.equal(slow.world.view().dialogue.length, 0);
     slow.at(30000);
     assert.equal(slow.world.view().dialogue.length, 1, "the randomized upper cadence bound is thirty seconds");
+});
+
+test("dialogue reading window counts actual words at the 200 wpm estimate", () => {
+    const h = harness();
+    const agents = Array.from({ length: 50 }, (_, index) => agent(`speaker-${index}`));
+    h.world.update(snapshot(agents), preferences());
+    const upbeat = h.world.view().characters.find((character) => character.voiceFlavor === "upbeat");
+    assert.ok(upbeat);
+
+    h.at(15000);
+    const bubble = h.world.view().dialogue.find((item) => item.agentId === upbeat.id);
+    assert.ok(bubble);
+    assert.equal(bubble.text, "A little sunshine makes this corner feel warm and welcoming today.");
+    const words = bubble.text.trim().split(/\s+/u).length;
+    assert.equal(words, 11);
+    assert.equal(bubble.endsAt - bubble.startedAt, words * 300);
 });
 
 test("state changes interrupt dialogue and regenerate after the per-agent cooldown", () => {
@@ -537,7 +553,7 @@ test("five stable voice flavors author state-transition dialogue with a cooldown
         assert.equal(bubble.fictional, true);
         assert.equal(bubble.placement, "secondary");
         assert.equal(bubble.label, "Fictional character dialogue");
-        assert.ok(bubble.text.trim().split(/\\s+/).length <= 12);
+        assert.ok(bubble.text.trim().split(/\s+/u).length <= 12);
     }
     h.world.update(snapshot(agents.map((item) => ({ ...item, state: "working" }))), preferences());
     assert.deepEqual(h.world.view().dialogue, bubbles);

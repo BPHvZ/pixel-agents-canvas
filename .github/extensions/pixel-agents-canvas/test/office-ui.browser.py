@@ -128,7 +128,7 @@ class OfficeBrowserTests(unittest.TestCase):
             const {createOfficeWorld, deterministicAppearance} = await import('/office-world.js');
             const world = createOfficeWorld({clock: () => 1000});
             world.update(state.snapshot, state.preferences);
-            window.uiTest = {state, view: world.view(), drawOffice, deterministicAppearance};
+            window.uiTest = {state, view: world.view(), drawOffice, deterministicAppearance, createOfficeWorld};
         }""", self.state)
 
     def tearDown(self):
@@ -178,6 +178,32 @@ class OfficeBrowserTests(unittest.TestCase):
         self.assertEqual(self.page.locator("button.character[data-agent='agent-0'] > .status-chip").inner_text(), "○ Idle")
         self.assertEqual(self.state, before)
         self.assertEqual(self.page.locator("#feed").inner_text(), feed_before)
+
+    def test_projected_unknown_agent_renders_as_quiet_fiction_without_session_end(self):
+        self.page.evaluate("""() => {
+            const state = structuredClone(uiTest.state);
+            state.snapshot.agents[0].state = 'unknown';
+            state.snapshot.feed = [];
+            let now = 0;
+            const world = uiTest.createOfficeWorld({clock: () => now, random: () => 0});
+            world.update(state.snapshot, state.preferences);
+            now = 10000;
+            world.tick();
+            uiTest.state = state;
+            uiTest.view = world.view();
+            uiTest.drawOffice(document, state, 'agent-0', uiTest.view);
+        }""")
+        cluster = self.page.locator(".session-cluster[data-session='session-0']")
+        character = self.page.locator("button.character[data-agent='agent-0']")
+        self.assertTrue(cluster.evaluate("element => element.classList.contains('quiet-cluster')"))
+        self.assertNotIn("Review frontend accessibility", cluster.inner_text())
+        self.assertEqual(cluster.locator(".motifs").inner_text(), "")
+        self.assertIn("Unknown", character.locator(".status-chip").inner_text())
+        self.assertNotIn("Session ended", cluster.inner_text())
+        self.assertIn("quiet scene", cluster.get_attribute("aria-label").casefold())
+        self.assertEqual(cluster.locator(".quiet-effect").count(), 1)
+        self.assertIn("fictional", cluster.locator(".quiet-effect").get_attribute("aria-label").casefold())
+        self.assertEqual(self.page.locator("#feed").inner_text(), "No observed activity yet.")
 
     def test_parent_ended_visibility_preference_is_rendered_and_toggleable(self):
         self.saved["snapshot"]["agents"].append({**self.saved["snapshot"]["agents"][0],
