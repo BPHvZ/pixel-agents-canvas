@@ -1,0 +1,2 @@
+dev/office-demo/** export-ignore
+test/office-demo.test.js export-ignore

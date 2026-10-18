@@ -1,0 +1,17 @@
+scripts:
+  - name: Run project checks
+    command: npm run check
+  - name: Run project tests
+    command: npm test
+  - name: Lint
+    command: npm run lint
+  - name: Strict typecheck
+    command: npm run typecheck
+  - name: Start local office demo
+    command: node dev/office-demo/server.js
+  - name: Test scenario catalog
+    command: node --test test/office-demo.test.js
+  - name: Capture scenario frames
+    command: python3 dev/office-demo/capture_scenarios.py
+server_ready_pattern: '(http://127\.0\.0\.1:[0-9]+/)'
+auto_open_in_browser: true

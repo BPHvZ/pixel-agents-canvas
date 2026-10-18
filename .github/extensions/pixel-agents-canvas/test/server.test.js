@@ -22,6 +22,32 @@ function request(url,options,body) {
         outgoing.end(body);
     });
 }
+
+/** @param {URL} url @param {string} origin @param {number} contentLength @returns {Promise<number>} */
+function declaredOversizeStatus(url,origin,contentLength) {
+    return new Promise((resolve,reject)=>{
+        const socket=connect(Number(url.port),url.hostname);
+        let response='';
+        socket.setEncoding('utf8');
+        socket.on('data',chunk=>{response+=chunk;});
+        socket.once('error',reject);
+        socket.once('connect',()=>socket.write([
+            `POST ${url.pathname} HTTP/1.1`,
+            `Host: ${url.host}`,
+            `Origin: ${origin}`,
+            'Content-Type: application/json',
+            `Content-Length: ${contentLength}`,
+            'Connection: close',
+            '',
+            '',
+        ].join('\r\n')));
+        socket.once('close',()=>{
+            const status=Number(response.split('\r\n',1)[0]?.split(' ')[1]);
+            if(Number.isInteger(status))resolve(status);
+            else reject(new Error('HTTP server closed without a status response'));
+        });
+    });
+}
 const preferences={hideTitles:false,hiddenSessionTitles:{},showEnded:false,vignettes:true,dialogue:true,appearances:{}};
 
 test('all write routes bound declared and streamed bodies before invoking mutations',async()=>{
@@ -32,8 +58,11 @@ test('all write routes bound declared and streamed bodies before invoking mutati
     try {
         for(const path of ['/preferences','/codex/enable','/codex/disable','/codex/refresh']) {
             for(const transfer of [{'content-length':String(512*1024+1)},{'transfer-encoding':'chunked'}]) {
-                const response=await request(new URL(path,server.url),{method:'POST',headers:{origin,'content-type':'application/json',...transfer}},' '.repeat(512*1024+1));
-                assert.equal(response.status,413,`${path}: ${JSON.stringify(transfer)}`);
+                const url=new URL(path,server.url);
+                const status=transfer['content-length']
+                    ? await declaredOversizeStatus(url,origin,Number(transfer['content-length']))
+                    : (await request(url,{method:'POST',headers:{origin,'content-type':'application/json',...transfer}},' '.repeat(512*1024+1))).status;
+                assert.equal(status,413,`${path}: ${JSON.stringify(transfer)}`);
             }
         }
         assert.equal(starts,0);
@@ -195,6 +224,15 @@ test('server serves explicit assets/state and rejects cross-origin writes, inval
   const url=server.url;
   const state=await fetch(new URL('/state',url)).then(r=>r.json());
   assert.equal(state.snapshot.agents.length,1);
+  assert.equal(state.snapshot.agents[0].id,controller.snapshot().agents[0].id);
+  assert.equal(state.snapshot.sessions[0].id,controller.snapshot().sessions[0].id);
+  assert.equal((await fetch(new URL('/state?scenario=active',url))).status,404);
+  assert.equal((await fetch(new URL('/?scenario=active',url))).status,404);
+  assert.equal((await fetch(new URL('/office-client.js?scenario=active',url))).status,404);
+  assert.equal((await fetch(new URL('/scenarios.js',url))).status,404);
+  assert.equal((await fetch(new URL('/player.js',url))).status,404);
+  assert.equal((await fetch(new URL('/bridge.js',url))).status,404);
+  assert.equal((await fetch(new URL('/dev/office-demo/scenarios.js',url))).status,404);
   assert.equal((await fetch(new URL('/unknown',url))).status,404);
   assert.equal((await fetch(new URL('/state',url),{method:'POST'})).status,405);
   assert.equal((await fetch(new URL('/preferences',url),{method:'POST',headers:{origin:'https://untrusted.invalid','content-type':'application/json'},body:'{}'})).status,403);

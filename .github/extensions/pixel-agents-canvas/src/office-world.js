@@ -417,8 +417,12 @@ export function createOfficeWorld({ clock = Date.now, random = Math.random } = {
                 const cooldownUntil = (lastDialogueAt.get(agent.id) ?? -Infinity) + 15000;
                 dialogueDueAt.set(agent.id, Math.max(now, cooldownUntil));
             }
-            if (agent.state === "completed" && previous?.state !== "completed") completionUntil.set(agent.id, now + 2000);
-            else if (agent.state !== "completed") completionUntil.delete(agent.id);
+            const completionEligible = !agent.ended && agent.connected && agent.freshness === "fresh" && agent.state !== "waiting" && agent.state !== "failed" && agent.state !== "unknown";
+            const completionTransition = previous
+                ? agent.state === "completed" && previous.state !== "completed" || agent.lastTurnOutcome === "completed" && previous.lastTurnOutcome !== "completed"
+                : agent.state === "completed" || agent.lastTurnOutcome === "completed";
+            if (completionEligible && completionTransition) completionUntil.set(agent.id, now + 2000);
+            else if (!completionEligible || agent.state !== "completed" && agent.lastTurnOutcome !== "completed") completionUntil.delete(agent.id);
             agents.set(agent.id, { ...agent });
         }
         for (const session of snapshot.sessions) {
@@ -492,7 +496,7 @@ export function createOfficeWorld({ clock = Date.now, random = Math.random } = {
                 const cleaning = props.find((prop) => prop.cleanupSceneId === scene?.id);
                 const scenePosition = scene?.kind === "desk-setup" || agent.state === "working" && !agent.ended ? deskPosition : cleaning ? cleaning.position : { x: sceneOrigin.x + 160 + (scene?.participants.indexOf(id) ?? 0) * 30, y: sceneOrigin.y + 40 };
                 const commonPosition = { x: position.x + 160, y: position.y + 40 };
-                result.characters.push({ id, agentId: id, sessionId: agent.sessionId, clusterId: `cluster:${session.id}`, spaceId: `space:${cluster.space}`, deskId: `space:${cluster.space}:desk:${deskIndex}`, deskIndex, position: scene ? scenePosition : agent.ended ? commonPosition : deskPosition, deskPosition, provider: agent.provider, providerName: agent.name, providerRole: agent.role, state: agent.state, ended: agent.ended, endedAt: agent.endedAt, waitingReason: agent.waitingReason, freshness: agent.freshness, connected: agent.connected, observed: observed.has(id), appearance, voiceFlavor: VOICES[hash(id) % 5] ?? "calm", pose: scene ? scene.kind === "vignette" ? "vignette" : scene.kind : agent.ended ? "rest" : !observed.has(id) ? "neutral" : agent.state === "completed" && agent.connected && agent.freshness === "fresh" && completionUntil.has(id) ? "completion" : factualPose(agent), statusLabel: agent.ended ? "Ended" : agent.state === "waiting" && agent.waitingReason === "approval" ? "Waiting for approval" : agent.state, sceneId: scene?.id ?? null, sceneLabel: scene?.label ?? null });
+                result.characters.push({ id, agentId: id, sessionId: agent.sessionId, clusterId: `cluster:${session.id}`, spaceId: `space:${cluster.space}`, deskId: `space:${cluster.space}:desk:${deskIndex}`, deskIndex, position: scene ? scenePosition : agent.ended ? commonPosition : deskPosition, deskPosition, provider: agent.provider, providerName: agent.name, providerRole: agent.role, state: agent.state, ended: agent.ended, endedAt: agent.endedAt, waitingReason: agent.waitingReason, freshness: agent.freshness, connected: agent.connected, observed: observed.has(id), appearance, voiceFlavor: VOICES[hash(id) % 5] ?? "calm", pose: scene ? scene.kind === "vignette" ? "vignette" : scene.kind : agent.ended ? "rest" : !observed.has(id) ? "neutral" : completionUntil.has(id) && !agent.ended && agent.connected && agent.freshness === "fresh" && agent.state !== "waiting" && agent.state !== "failed" && agent.state !== "unknown" ? "completion" : factualPose(agent), statusLabel: agent.ended ? "Ended" : agent.state === "waiting" && agent.waitingReason === "approval" ? "Waiting for approval" : agent.state, sceneId: scene?.id ?? null, sceneLabel: scene?.label ?? null });
             }
         }
         result.scenes = scenes;

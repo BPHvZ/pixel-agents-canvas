@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { createOfficeWorld, deterministicAppearance, deriveMotifs } from "../src/office-world.js";
+import { createOfficeState } from "../src/office-state.js";
 
 /** @returns {import('../src/product-types.js').OfficeSession} */
 function session(id = "s1", overrides = {}) {
@@ -587,6 +588,32 @@ test("completion is a brief flourish then rest, not an exit; errors, waits and u
     h.world.update(snapshot([agent("a1", "s1", { state: "unknown" })]), preferences());
     assert.equal(h.world.view().characters[0].pose, "neutral");
     assert.equal(h.world.view().clusters[0].abandoned, false);
+});
+
+test("Codex turn completion produces a brief flourish without inventing terminal state", () => {
+    let now = 1000;
+    const state = createOfficeState({ clock: () => now });
+    state.setProvider("Codex", { availability: "connected", enabled: true, detail: "Test metadata source" });
+    state.applyCodex([{ id: "thread", title: "Complete task", status: { type: "idle", activeFlags: [] }, updatedAt: now, monitoring: "subscribed" }], now);
+    const world = createOfficeWorld({ clock: () => now, random: () => 0 });
+    world.update(state.snapshot(), preferences());
+    assert.equal(world.view().characters[0]?.pose, "rest");
+
+    now += 10;
+    state.codexTurn({ threadId: "thread", turnId: "turn", outcome: "completed", at: now });
+    const completed = state.snapshot();
+    assert.equal(completed.agents[0]?.state, "idle");
+    assert.equal(completed.agents[0]?.ended, false);
+    assert.equal(completed.agents[0]?.lastTurnOutcome, "completed");
+    world.update(completed, preferences());
+    assert.equal(world.view().characters[0]?.pose, "completion");
+
+    now += 1999;
+    world.tick();
+    assert.equal(world.view().characters[0]?.pose, "completion");
+    now += 1;
+    world.tick();
+    assert.equal(world.view().characters[0]?.pose, "rest");
 });
 
 test("fiction controls are independent, preserve props/facts and expose a static reduced-motion alternative", () => {

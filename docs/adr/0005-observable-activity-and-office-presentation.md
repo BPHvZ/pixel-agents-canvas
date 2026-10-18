@@ -16,6 +16,10 @@ The office visualizes provider activity while also providing a fictional, statef
 - Stable character looks, aliases, and voice flavors are decorative, not provider-reported roles or personalities. Authored dialogue and office-wide vignettes are permitted only under the fiction/fact separation and lifecycle rules in ADR 0008; no prompt/task text is used to generate them.
 - Provider titles may appear as titles, not as guaranteed-sanitized summaries. Preview remains separate and is never displayed. Model/billing details are not part of default activity cards and may only appear in a separate details view when a host reports them reliably. Accessibility, keyboard operation, reduced motion, responsive layout, and readable status text remain acceptance qualities.
 
+## Decision update (2026-10-18)
+
+Keep the character badge focused on the provider-reported state and waiting cue, with WCAG AA contrast and text that does not rely on color alone. Do not duplicate provider or freshness/connection text on the character: identify the provider on its session and expose provider/source/freshness in agent details. When a session title is hidden, omit its text entirely rather than showing a “title hidden” placeholder; title-derived motifs remain governed by ADR 0008 and the control explains that behavior.
+
 ## Consequences
 
 - Provider adapters need explicit event-to-state mapping and stale-state tests; unsupported provider events must not be guessed.

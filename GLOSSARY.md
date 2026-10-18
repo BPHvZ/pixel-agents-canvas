@@ -64,6 +64,18 @@ _Avoid_: Coverage (when referring to the mechanism rather than its extent)
 A room or desk grouping that visually represents provider-established relationships among agents in one session; it does not imply shared files or workspace.
 _Avoid_: Team room (unless the provider reports a team)
 
+**Office zone**:
+A physical area shared within the office for work or fictional presentation, such as a desk area or common facility; it does not establish provider relationships.
+_Avoid_: Session cluster (when referring to the physical area)
+
+**Office zone**:
+A physical area shared within the office for work or fictional presentation, such as a desk area or common facility; it does not establish provider relationships.
+_Avoid_: Session cluster (when referring to the physical area)
+
+**Office zone**:
+A physical area shared within the office for work or fictional presentation, such as a desk area or common facility; it does not establish provider relationships.
+_Avoid_: Session cluster (when referring to the physical area)
+
 **Preview activity**:
 Explicitly labeled illustrative/sample data that is never presented as real provider activity.
 _Avoid_: Live, connected (for sample data)
