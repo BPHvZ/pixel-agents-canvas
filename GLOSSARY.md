@@ -68,6 +68,9 @@ _Avoid_: Team room (unless the provider reports a team)
 Explicitly labeled illustrative/sample data that is never presented as real provider activity.
 _Avoid_: Live, connected (for sample data)
 
+**Scenario**:
+A named, repeatable set of illustrative inputs representing one or more supported user-visible situations for development review; it is not provider-observed activity.
+
 **Decorative dialogue**:
 Fictional, authored character text shown in a speech bubble and identified to assistive technology as fiction, not as agent output or provider activity.
 _Avoid_: Agent response, activity message
