@@ -27,6 +27,10 @@ These are source-level implementation patterns, not proof that our providers exp
 - A cluster becomes **abandoned** only after explicit provider-reported session/thread closure with no agents remaining. An explicit agent-end signal exits that character; ordinary turn completion/failure, idle, archive, stale, or disconnected state alone does not trigger departure or haunting. An empty ended cluster keeps a neutral “Session ended” marker/time and its props, but loses its title/motif. It is softly dimmed and may show whimsical-spooky ambience: brief ghost, spider, screen-flicker-without-error-cue, or chair movement; a web persists as a prop until tidied. A returning session restores its identity/title/motif and normal lighting. A different session may reuse the physical space, but receives a new cluster identity and context rather than inheriting the old session.
 - User appearance overrides are stored locally by provider identity when stable, otherwise by session. A deterministic provider-identity look is the default. Users may change sprite/outfit, palette, accessory/desk prop, and local nickname; nickname is prominent while provider name/role remain available as factual secondary identity. Do not add user-authored role/focus/task fields.
 
+## Provider-signal interpretation
+
+An office departure requires a genuine provider-reported agent/session end. In particular, Codex app-server `thread/closed` is runtime unload/subscription closure, not proof that the conversation ended; see [ADR 0007's protocol clarification](./0007-provider-consent-and-discovery.md#protocol-clarification-2026-10-18). It produces an unmonitored/unknown observation and must not trigger an abandoned cluster. The world model can render explicitly ended clusters when a supported provider reports them; absence of that capability is not filled with invented exits.
+
 ## Consequences
 
 - UI tests must assert that fiction never changes normalized provider state, freshness, sorting, navigation, or the factual event feed.

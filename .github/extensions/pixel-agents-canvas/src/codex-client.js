@@ -5,15 +5,15 @@ import { StringDecoder } from "node:string_decoder";
 /** @typedef {import("./types.js").AgentState} AgentState */
 /** @typedef {import("./types.js").ChildProcessLike} ChildProcessLike */
 /** @typedef {import("./types.js").CodexActivityEvent} CodexActivityEvent */
-/** @typedef {import("./types.js").CodexClient} CodexClient */
+/** @typedef {import("./codex-extra-types.js").CodexClient} CodexClient */
 /** @typedef {import("./types.js").CodexClientOptions} CodexClientOptions */
 /** @typedef {import("./types.js").CodexListOptions} CodexListOptions */
-/** @typedef {import("./types.js").DiscoveredCodexThread} DiscoveredCodexThread */
+/** @typedef {import("./codex-extra-types.js").DiscoveredCodexThread} DiscoveredCodexThread */
 /** @typedef {import("./types.js").CodexMonitoringStatus} CodexMonitoringStatus */
 /** @typedef {import("./types.js").CodexNotificationParams} CodexNotificationParams */
 /** @typedef {import("./types.js").CodexProtocolMessage} CodexProtocolMessage */
 /** @typedef {import("./types.js").CodexThreadListPage} CodexThreadListPage */
-/** @typedef {import("./types.js").CodexThreadMetadata} CodexThreadMetadata */
+/** @typedef {import("./codex-extra-types.js").CodexThreadMetadata} CodexThreadMetadata */
 /** @typedef {import("./types.js").CodexThreadStatus} CodexThreadStatus */
 /** @typedef {import("./types.js").CodexThreadStatusType} CodexThreadStatusType */
 /** @typedef {import("./types.js").CodexTurnEvent} CodexTurnEvent */
@@ -62,7 +62,7 @@ function turnOutcome(value) {
 /** @param {unknown} thread @param {boolean} archived @returns {CodexThreadMetadata | null} */
 function metadataOnlyThread(thread, archived) {
     if (!thread || typeof thread !== "object" || Array.isArray(thread)) return null;
-    const source = /** @type {import("./types.js").RawCodexThread} */ (thread);
+    const source = objectRecord(thread);
     if (typeof source.id !== "string" || !source.id) return null;
     const rawStatus = source.status;
     const statusRecord = rawStatus && typeof rawStatus === "object" ? /** @type {Record<string, unknown>} */ (rawStatus) : null;
@@ -78,7 +78,10 @@ function metadataOnlyThread(thread, archived) {
     return {
         id: source.id,
         title: boundedText(source.title, 160) ?? boundedText(source.name, 160),
-        parentThreadId: typeof source.parentThreadId === "string" ? source.parentThreadId : null,
+        parentThreadId: boundedText(source.parentThreadId, 256),
+        ...("sessionId" in source ? { sessionId: boundedText(source.sessionId, 256) } : {}),
+        ...("agentNickname" in source ? { agentNickname: boundedText(source.agentNickname, 160) } : {}),
+        ...("agentRole" in source ? { agentRole: boundedText(source.agentRole, 160) } : {}),
         status,
         createdAt: safeTimestamp(source.createdAt),
         updatedAt: safeTimestamp(source.updatedAt),
@@ -106,11 +109,13 @@ export function createCodexClient(options = {}) {
     const threadMonitoring = new Map();
     /** @type {Map<string, string | undefined>} */
     const turns = new Map();
+    /** @type {Map<string, Partial<CodexThreadMetadata>>} */
+    const latestMetadata = new Map();
 
     /** @param {string} method @param {Record<string, unknown>} [params] @param {number} [requestTimeoutMs] @returns {Promise<unknown>} */
     function write(method, params = {}, requestTimeoutMs = timeoutMs) {
         const currentChild = child;
-        if (!currentChild || currentChild.stdin.destroyed) return Promise.reject(new Error("Codex app-server is not running"));
+        if (!currentChild || currentChild.stdin.destroyed || (closedByUs && method !== "thread/unsubscribe")) return Promise.reject(new Error("Codex app-server is not running"));
         const id = nextId++;
         return new Promise((resolve, reject) => {
             const timer = setTimeout(() => { pending.delete(id); reject(new Error(`Codex request timed out: ${method}`)); }, requestTimeoutMs);
@@ -140,7 +145,7 @@ export function createCodexClient(options = {}) {
             } else request.resolve(message.result);
             return;
         }
-        if (typeof message.method !== "string" || !message.method.includes("/")) return;
+        if (closedByUs || typeof message.method !== "string" || !message.method.includes("/")) return;
         const params = objectRecord(message.params);
         const rawThread = objectRecord(params.thread);
         const rawTurn = objectRecord(params.turn);
@@ -167,14 +172,19 @@ export function createCodexClient(options = {}) {
             const outcome = turnOutcome(p.turn?.status);
             onTurn({ threadId, turnId: p.turn?.id ?? null, outcome, at: Date.now() });
         } else if (message.method === "thread/status/changed" && threadId && trackedThreads.has(threadId)) {
-            onEvent({ provider: "codex", id: `codex:${threadId}`, state: agentStateForThreadStatus(p.status), event: "thread-status", at: Date.now() });
+            const status = { type: threadStatusType(p.status?.type), activeFlags: p.status?.activeFlags ?? [] };
+            latestMetadata.set(threadId, { ...latestMetadata.get(threadId), status });
+            const waitingReason = status.activeFlags.includes("waitingOnApproval") ? "approval" : status.activeFlags.includes("waitingOnUserInput") ? "input" : null;
+            onEvent({ provider: "codex", id: `codex:${threadId}`, state: agentStateForThreadStatus(status), waitingReason, event: "thread-status", at: Date.now() });
         } else if (message.method === "thread/closed" && threadId && trackedThreads.has(threadId)) {
             trackedThreads.delete(threadId);
             threadMonitoring.delete(threadId);
             turns.delete(threadId);
             const at = Date.now();
             onThreadLifecycle({ threadId, event: "closed", at });
-            onEvent({ provider: "codex", id: `codex:${threadId}`, state: "completed", event: "session-end", at });
+            // thread/closed is app-server runtime eviction, not persisted session termination.
+            latestMetadata.set(threadId, { ...latestMetadata.get(threadId), status: { type: "notLoaded", activeFlags: [] } });
+            onEvent({ provider: "codex", id: `codex:${threadId}`, state: "unknown", event: "thread-status", waitingReason: null, at });
         } else if ((message.method === "thread/archived" || message.method === "thread/unarchived") && threadId && trackedThreads.has(threadId)) {
             const event = message.method === "thread/archived" ? "archived" : "unarchived";
             threadMonitoring.set(threadId, event === "archived" ? "archived" : "subscribed");
@@ -183,44 +193,79 @@ export function createCodexClient(options = {}) {
             onEvent({ provider: "codex", id: `codex:${threadId}`, state: "failed", event: "error", at: Date.now() });
         }
     }
+    function failOversizedProtocol() {
+        buffer = ""; decoder = undefined;
+        const error = new Error("Codex sent an oversized protocol message");
+        onStatus({ availability: "unavailable", connected: false, error: error.message });
+        failPending(error);
+        void stop();
+    }
     /** @param {Uint8Array} chunk */
     function consume(chunk) {
         const currentDecoder = decoder;
         if (!currentDecoder) return;
         buffer += currentDecoder.write(chunk);
-        if (buffer.length > MAX_LINE && !buffer.includes("\n")) { buffer = ""; onStatus({ availability: "unavailable", connected: false, error: "Codex sent an oversized protocol message" }); return; }
         let end;
         while ((end = buffer.indexOf("\n")) !== -1) {
+            if (end > MAX_LINE) { failOversizedProtocol(); return; }
             const line = buffer.slice(0, end); buffer = buffer.slice(end + 1);
             if (!line.trim()) continue;
-            if (line.length > MAX_LINE) continue;
             try { handle(JSON.parse(line)); } catch { /* Ignore malformed or unrecognized server output. */ }
         }
+        if (buffer.length > MAX_LINE) failOversizedProtocol();
+    }
+    /** @type {Promise<void> | undefined} */
+    let starting;
+    /** @type {Promise<void> | undefined} */
+    let stopping;
+    /** @type {Promise<void> | undefined} */
+    let restarting;
+    /** @returns {Promise<void>} */
+    function start() {
+        if (stopping) {
+            restarting ??= stopping.then(() => start()).finally(() => { restarting = undefined; });
+            return restarting;
+        }
+        if (starting) return starting;
+        starting = initializeProcess().finally(() => { starting = undefined; });
+        return starting;
     }
     /** @returns {Promise<void>} */
-    async function start() {
+    async function initializeProcess() {
         if (child) return;
         closedByUs = false; buffer = ""; decoder = new StringDecoder("utf8");
-        child = spawnProcess(executable, ["app-server", "--listen", "stdio://"], { stdio: ["pipe", "pipe", "pipe"], windowsHide: true });
-        child.stdout.on("data", consume);
-        child.stderr.on("data", () => {});
-        child.once("error", (error) => { onStatus({ availability: "unavailable", connected: false, error: error.message }); failPending(error); child = undefined; });
-        child.once("exit", (code, signal) => {
-            child = undefined; failPending(new Error(`Codex app-server exited (${signal ?? code ?? "unknown"})`));
-            trackedThreads.clear(); threadMonitoring.clear(); turns.clear(); onStatus({ availability: closedByUs ? "unavailable" : "disconnected", connected: false, error: closedByUs ? "Stopped" : `Codex app-server exited (${signal ?? code ?? "unknown"})` });
+        const current = spawnProcess(executable, ["app-server", "--listen", "stdio://"], { stdio: ["pipe", "pipe", "pipe"], windowsHide: true });
+        child = current;
+        current.stdout.on("data", (chunk) => { if (child === current) consume(chunk); });
+        current.stderr.on("data", () => {});
+        current.once("error", (error) => {
+            if (child !== current) return;
+            onStatus({ availability: "unavailable", connected: false, error: "Codex app-server process error" });
+            failPending(error);
+            void stop();
+        });
+        current.once("exit", (code, signal) => {
+            if (child !== current) return;
+            child = undefined; buffer = ""; decoder = undefined;
+            failPending(new Error(`Codex app-server exited (${signal ?? code ?? "unknown"})`));
+            trackedThreads.clear(); threadMonitoring.clear(); turns.clear(); latestMetadata.clear();
+            onStatus({ availability: closedByUs ? "unavailable" : "disconnected", connected: false, error: closedByUs ? "Stopped" : `Codex app-server exited (${signal ?? code ?? "unknown"})` });
         });
         try {
             await write("initialize", { clientInfo: CLIENT });
+            if (child !== current || closedByUs) throw new Error("Codex app-server stopped during initialization");
             onStatus({ availability: "connected", connected: true, error: "" });
         } catch (error) {
-            await stop();
-            onStatus({ availability: "unavailable", connected: false, error: error instanceof Error ? error.message : "Codex app-server initialization failed" });
+            const intentionallyStopped = closedByUs;
+            if (child === current && !stopping) await stop();
+            if (!intentionallyStopped && !child) onStatus({ availability: "unavailable", connected: false, error: "Codex app-server initialization failed" });
             throw error;
         }
     }
     /** @param {CodexListOptions} [options] @returns {Promise<CodexThreadMetadata[]>} */
     async function listThreads({ archived = false, limit = THREAD_LIST_LIMIT } = {}) {
-        if (!child) throw new Error("Enable the Codex provider first");
+        const current = child;
+        if (!current || closedByUs) throw new Error("Enable the Codex provider first");
         const pageSize = Number.isSafeInteger(limit) && limit > 0 ? limit : THREAD_LIST_LIMIT;
         /** @type {Map<string, CodexThreadMetadata>} */
         const threadsById = new Map();
@@ -230,25 +275,57 @@ export function createCodexClient(options = {}) {
         while (true) {
             const params = /** @type {Record<string, unknown>} */ ({ archived: Boolean(archived), limit: pageSize, useStateDbOnly: true });
             if (cursor !== null) params.cursor = cursor;
+            requireCurrent(current);
             const response = await write("thread/list", params);
+            requireCurrent(current);
             if (!response || typeof response !== "object" || !Array.isArray(/** @type {Record<string, unknown>} */ (response).data)) throw new Error("Codex returned an invalid thread/list response");
             const result = /** @type {CodexThreadListPage} */ (response);
             for (const thread of result.data) {
                 const metadata = metadataOnlyThread(thread, archived);
-                if (metadata && !threadsById.has(metadata.id)) threadsById.set(metadata.id, metadata);
+                if (!metadata) continue;
+                const previous = threadsById.get(metadata.id);
+                const timestamp = (/** @type {Timestamp} */ value) => typeof value === "number" ? value * 1000 : typeof value === "string" ? Date.parse(value) : -Infinity;
+                if (!previous || timestamp(metadata.updatedAt) > timestamp(previous.updatedAt)) threadsById.set(metadata.id, metadata);
             }
-            const nextCursor = typeof result.nextCursor === "string" && result.nextCursor.length > 0 ? result.nextCursor : null;
-            if (nextCursor === null || seenCursors.has(nextCursor)) break;
+            const nextCursor = result.nextCursor;
+            if (nextCursor === null) break;
+            if (typeof nextCursor !== "string" || !nextCursor.length) throw new Error("Codex returned an invalid thread/list cursor");
+            if (seenCursors.has(nextCursor)) throw new Error("Codex returned a repeated thread/list cursor");
             seenCursors.add(nextCursor);
             cursor = nextCursor;
         }
         return [...threadsById.values()];
     }
+    /** @type {Map<boolean, Promise<DiscoveredCodexThread[]>>} */
+    const discoveries = new Map();
+    /** @type {Promise<void> | undefined} */
+    let discoveryQueue;
     /** @param {import("./types.js").CodexDiscoveryOptions} [options] @returns {Promise<DiscoveredCodexThread[]>} */
-    async function discoverThreads({ includeArchived = true } = {}) {
-        if (!child) throw new Error("Enable the Codex provider first");
+    function discoverThreads({ includeArchived = true } = {}) {
+        const current = child;
+        if (!current || closedByUs) return Promise.reject(new Error("Enable the Codex provider first"));
+        const existing = discoveries.get(includeArchived);
+        if (existing) return existing;
+        const discovery = (discoveryQueue ?? Promise.resolve()).then(() => discover(current, includeArchived)).finally(() => {
+            if (discoveries.get(includeArchived) === discovery) discoveries.delete(includeArchived);
+        });
+        discoveries.set(includeArchived, discovery);
+        discoveryQueue = discovery.then(() => {}, () => {});
+        return discovery;
+    }
+    /** @param {ChildProcessLike} current */
+    function requireCurrent(current) {
+        if (child !== current || closedByUs) throw new Error("Codex app-server stopped during discovery");
+    }
+    /** @param {ChildProcessLike} current @param {boolean} includeArchived @returns {Promise<DiscoveredCodexThread[]>} */
+    async function discover(current, includeArchived) {
+        requireCurrent(current);
+        // Only in-flight notifications may override this discovery's fresh snapshots.
+        latestMetadata.clear();
         const activeThreads = await listThreads({ archived: false });
+        requireCurrent(current);
         const archivedThreads = includeArchived ? await listThreads({ archived: true }) : [];
+        requireCurrent(current);
         let subscriptionFailures = 0;
         const pendingThreads = activeThreads.filter((thread) => !trackedThreads.has(thread.id));
         for (const thread of activeThreads) {
@@ -258,40 +335,61 @@ export function createCodexClient(options = {}) {
         const workerCount = Math.min(THREAD_RESUME_CONCURRENCY, pendingThreads.length);
         await Promise.all(Array.from({ length: workerCount }, async () => {
             while (nextThreadIndex < pendingThreads.length) {
+                requireCurrent(current);
                 const thread = pendingThreads[nextThreadIndex++];
                 if (!thread) break;
                 trackedThreads.add(thread.id);
                 try {
-                    await write("thread/resume", { threadId: thread.id, excludeTurns: true });
+                    const response = objectRecord(await write("thread/resume", { threadId: thread.id, excludeTurns: true }));
+                    requireCurrent(current);
+                    const fresh = metadataOnlyThread(response.thread, false);
+                    if (!fresh || fresh.id !== thread.id) throw new Error("Codex returned an invalid thread/resume response");
+                    Object.assign(thread, fresh);
                     threadMonitoring.set(thread.id, "subscribed");
                 } catch {
+                    requireCurrent(current);
                     trackedThreads.delete(thread.id);
                     threadMonitoring.set(thread.id, "unavailable");
                     subscriptionFailures++;
                 }
             }
         }));
+        requireCurrent(current);
         onStatus({ availability: subscriptionFailures ? "stale" : "connected", connected: true, error: subscriptionFailures ? "Some Codex sessions could not be monitored" : "" });
         return [
-            ...activeThreads.map((thread) => ({ ...thread, monitoring: threadMonitoring.get(thread.id) ?? "unavailable" })),
+            ...activeThreads.map((thread) => ({ ...thread, ...latestMetadata.get(thread.id), monitoring: threadMonitoring.get(thread.id) ?? "unavailable" })),
             ...archivedThreads.map((thread) => ({ ...thread, monitoring: /** @type {const} */ ("archived") })),
         ];
     }
     /** @returns {Promise<void>} */
-    async function stop() {
-        if (!child) return;
+    function stop() {
+        if (stopping) return stopping;
+        if (!child) return Promise.resolve();
         closedByUs = true;
         const current = child;
+        failPending(new Error("Codex app-server stopped"));
+        stopping = stopProcess(current).finally(() => { stopping = undefined; });
+        return stopping;
+    }
+    /** @param {ChildProcessLike} current @returns {Promise<void>} */
+    async function stopProcess(current) {
         const unsubscribeTimeoutMs = Math.min(timeoutMs, 1_000);
         await Promise.all([...trackedThreads].map((threadId) => write("thread/unsubscribe", { threadId }, unsubscribeTimeoutMs).catch(() => {})));
-        if (child === current) child = undefined;
         failPending(new Error("Codex app-server stopped"));
         if (current.exitCode == null && current.signalCode == null) {
+            let exited = false;
+            /** @type {ReturnType<typeof setTimeout> | undefined} */
+            let timer;
+            const exit = new Promise((resolve) => current.once("exit", () => { exited = true; resolve(undefined); }));
+            const timeout = new Promise((resolve) => { timer = setTimeout(resolve, 1_500); });
             current.kill("SIGTERM");
-            await Promise.race([new Promise((resolve) => current.once("exit", resolve)), new Promise((resolve) => setTimeout(resolve, 1_500))]);
-            if (current.exitCode == null && current.signalCode == null) current.kill("SIGKILL");
+            await Promise.race([exit, timeout]);
+            clearTimeout(timer);
+            if (!exited && current.exitCode == null && current.signalCode == null) current.kill("SIGKILL");
         }
-        trackedThreads.clear(); turns.clear();
+        if (child === current) child = undefined;
+        buffer = ""; decoder = undefined;
+        trackedThreads.clear(); threadMonitoring.clear(); turns.clear(); latestMetadata.clear();
     }
     return { start, stop, listThreads, discoverThreads, get running() { return Boolean(child); } };
 }

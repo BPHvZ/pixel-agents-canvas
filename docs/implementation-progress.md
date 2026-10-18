@@ -2,18 +2,18 @@
 
 This checklist tracks the product plan in [PLAN.md](../PLAN.md) and decisions in [docs/adr](./adr). Check an item only when its evidence or verification is recorded. Keep this file current as each vertical slice lands; do not mark a phase complete while a gate is unresolved.
 
-## Status snapshot — 2026-10-17
+## Status snapshot — 2026-10-18
 
 **Overall: implementation in progress; not release-ready.** Work remains in the original waddle worktree on `develop`. Phase 0 approval is a feasibility decision, not completion of the later product/release gates.
 
 | Phase | Status | Remaining acceptance work |
 |---|---|---|
 | 0 — Feasibility | Approved | Keep version-specific evidence and privacy/host limitations explicit |
-| 1 — Domain/core | In progress | Unified provider capabilities/availability integration and verification |
-| 2 — Codex discovery | Initial slice implemented | Recovery/reconnect, concurrent-pagination behavior, and cross-version validation |
-| 3 — Copilot/navigation | Partial | Validate current hosting-session wiring after reload; retain unsupported cross-session navigation disclosure |
-| 4 — Office UI | Design approved; initial renderer implemented | Agent/session clustering, factual feed/coverage, accessibility, preferences/motifs, and ADR 0008 ambience |
-| 5 — Release | Pending | Fresh verification in both hosts, provider combinations, updated UI scale/accessibility checks, and release documentation |
+| 1 — Domain/core | Implemented and locally verified | Maintain provider accuracy as contracts evolve |
+| 2 — Codex discovery | Implemented for tested CLI 0.163.0 | Other CLI versions remain unverified; no transcript fallback |
+| 3 — Copilot/navigation | Implemented; current VS Code canvas open | Latest App visual verification; cross-session navigation intentionally unavailable |
+| 4 — Office UI | Implemented and locally verified | Latest App visual review and manual assistive-technology acceptance |
+| 5 — Release | Host/manual gates remain | Latest App review, manual assistive-technology checks; no unqualified release-ready claim |
 
 ### Delivered evidence
 
@@ -22,14 +22,23 @@ This checklist tracks the product plan in [PLAN.md](../PLAN.md) and decisions in
 - `d7bf978`: portable root/subtree agent instructions and two project-owned skills; [CI passed](https://github.com/BPHvZ/pixel-agents-canvas/actions/runs/39065651959).
 - `f8bab81`: explicit accepted-ADR coverage gate and continuous product-plan/progress updates; links and skill frontmatter validated, and [CI passed](https://github.com/BPHvZ/pixel-agents-canvas/actions/runs/39066198324).
 
-### Next implementation slices
+### Remaining release gates
 
-1. Finish and test unified provider health/capability reporting and recovery/lifecycle handling (ADRs 0001/0007), keeping turn outcome distinct from session closure.
-2. Complete hosting-session adapter verification and reload/open/action/reopen checks for the current code in both hosts (ADRs 0001/0003/0007). Record unavailable checks rather than reusing Phase 0 evidence as current-code validation.
-3. Build provider-identified agent/session clusters and the factual roster/feed/coverage with accessibility and title visibility controls (ADRs 0002/0004/0005/0006).
-4. Add the separately tested fictional-office layer, customization, motifs, and prop/abandoned-cluster lifecycle (ADR 0008); preserve factual state and feed throughout.
+1. Review the latest canvas visually in GitHub Copilot App; the current VS Code host and a fresh CLI/SDK runtime are verified, but old App Phase 0 screenshots do not accept this new UI (ADR 0003).
+2. Complete manual screen-reader/assistive-technology acceptance and representative host reload/close behavior where automation cannot drive the actual host UI (ADRs 0003/0005).
+3. Keep CLI support explicitly scoped to 0.163.0 until additional versions are verified. Do not invent Codex persisted-session termination from runtime unload or mark unsupported cross-session navigation as implemented (ADRs 0001/0007).
 
-No product acceptance checkbox is advanced by this documentation-only status update. No new host or live-provider validation was performed for this update.
+### Current implementation verification — 2026-10-18
+
+ADRs 0001/0003/0007 cover the shared provider controller/state, Codex recovery, and supported SDK session-event wiring; ADRs 0002/0004/0005/0006/0008 cover local preferences and the clustered factual/fictional UI. These changes are implemented and locally verified in the current worktree; latest App/manual acceptance remains a release gate.
+
+- `npm run check` passes lint, strict types, and **120 tests** after integration. Coverage includes provider cancellation/pagination/monitoring, private atomic preference records, browser JSON validation, world lifecycle and no factual mutation, same-origin HTTP controls, and instance-owned prop survival across page reload. The separate `python .github/extensions/pixel-agents-canvas/test/office-ui.browser.py` suite passes **12 browser regressions**, including active-first order, feed identity escaping, focused-edit stability, minimal preference patches, persisted-page restoration, server-world reload, and cross-cluster movement/cleanup.
+- The current hosting canvas capability list exposes `list_agents`, `enable_codex`, `disable_codex`, and `refresh_codex`; open/action/reopen succeeded in VS Code with the same instance URL. Read-only action output shows the real hosting agent working, not synthetic activity. Codex is disabled until separately enabled.
+- A disposable real CLI/SDK runtime verified project extension discovery, current action registration, HTTP state, open/reopen URL reuse, instance close stopping the listener, and clean runtime stop; no model turn was started. This does not substitute for Copilot App visual review.
+- Actual HTTP/Chrome fixture checks verified keyboard selection/focus, local nickname/outfit save and reload, title hiding while motifs remain, source enable/disable, fiction toggles, 390px layout, and reduced-motion `0s` animation duration; no page errors. The final clean scale fixture displayed all **300 Codex workers in 100 provider session trees plus the hosting agent** (301 characters/101 clusters) in 164.58 ms navigation-to-render on Chrome 152.0.7977.84; no cap/omission, no mobile horizontal overflow. This is a smoke measurement, not a universal latency guarantee.
+- Codex CLI 0.163.0 list-only verification returned active/archived counts and safe field names only; no previews/turns escaped, no model turn or bulk-resume scale test was run, and the owned app-server exited.
+
+Remaining checks and latest-host limitations stay explicit below; fixture/browser evidence is not broad release acceptance.
 
 ## Phase 0 — Feasibility and release gates
 
@@ -53,36 +62,40 @@ No product acceptance checkbox is advanced by this documentation-only status upd
 - [x] Extend/test distinct session and agent identities, provider-established hierarchy, partial/unknown values, lifecycle, freshness, and independent provider availability. Evidence: `.github/extensions/pixel-agents-canvas/src/domain.js` and `test/domain.test.js` (Codex v2 schema generated from installed CLI 0.162.1).
 - [x] Test duplicate, malformed, out-of-order, missing, stale, and future-dated signals without false activity/completion. Evidence: `test/domain.test.js` and `test/state.test.js`.
 - [x] Add custom provider/domain/protocol types and checked JavaScript, including the separate browser module. Reproducible verification is now `npm run check`: ESLint (zero warnings), strict TypeScript with `noImplicitAny` and unchecked-index checks, and 35 tests. Lint rejects explicit `any` in declarations and JSDoc (including nested types and wildcard syntax); type-aware rules reject unsafe inferred values. Negative tests prove the policy. The SDK declaration is a type-only projection of the runtime-injected surface, not proof of host compatibility.
-- [ ] Finish and verify independent provider capability/availability reporting through one adapter interface. Current wiring emits normalized Copilot/Codex status in `/state` and `list_agents`, with Codex connection/list/monitoring distinctions; capability reporting and end-to-end adapter/UI verification remain incomplete (ADRs 0001/0007).
+- [x] Integrate a shared typed provider-health/capability model through controller, factual store, `/state`, actions, and coverage UI. Tests verify independent sources, confirmed empty vs unavailable, per-thread monitoring failure, disabled source isolation, identity grouping, stale/out-of-order observations, and detached snapshots (ADRs 0001/0007; `office-state.test.js`, `controller.test.js`, `office-ui.test.js`).
 
 ## Phase 2 — Codex existing-session discovery
 
 - [x] Implement the explicit opt-in local app-server lifecycle after Phase 0 approval. The `Enable local Codex` canvas control starts the provider; shutdown unsubscribes tracked threads and terminates the child.
 - [x] Discover active and archived existing threads through paginated `thread/list`, using `useStateDbOnly: true`; field-select metadata, discard previews/turns/paths, resume active threads with `excludeTurns: true`, and preserve archive/turn/thread-close distinctions. Per-thread monitoring failures are distinct from provider process availability. Unit coverage: `test/codex-client.test.js`. CLI 0.163.0 live list/read-only verification was completed during Phase 0; a bulk live resume of all listed threads was intentionally not performed.
-- [ ] Complete provider recovery/reconnect, concurrent-pagination stability, and cross-version lifecycle validation. Current fixtures cover pagination, content-field discard, archive vs close, turn outcome vs thread state, and unsubscribe; domain tests cover reported hierarchy.
+- [x] Implement/test enabled-source recovery, bounded subscription concurrency, coalesced start/discovery/stop, cancellation races, request timeouts, invalid/repeating cursors, newest duplicates, in-flight notification precedence, oversized protocol failure, and unsubscribe/child cleanup. Scope protocol support to live-tested CLI 0.163.0; untested CLI versions are not claimed compatible (`codex-client.test.js`, `controller.test.js`).
+- [ ] Cross-version release validation beyond CLI 0.163.0 remains unperformed. Incompatible protocol/database failures stay unavailable rather than falling back to transcript scanning.
 
 ## Phase 3 — Copilot and navigation adapters
 
-- [ ] Implement supported hosting-conversation hooks with accurate narrow-scope labeling.
-- [ ] Implement documented open/focus navigation only where supported.
+- [x] Replace prototype hook-only wiring with documented SDK session-event subscription and hosting `sessionId`; preserve provider-reported subagent invocation identities, explicit `session.idle`, and shutdown semantics while dropping content fields. Current live VS Code action output confirms main/observed subagent activity; hosting-only scope and unknown fields remain visible (ADRs 0001/0003/0007).
+- [x] Retain owning-session canvas open/reopen. Cross-session navigation is explicitly unavailable in details/coverage because no supported tested route exists; no guessed command or thread deeplink is shipped (ADR 0003; Phase 0 navigation decision).
 - [x] Verify Codex app-server lifecycle works independently in the active VS Code Copilot CLI custom-endpoint session. Explicit enable action spawned `codex app-server`; `list_agents` reported connected; `start_codex_thread` returned an empty ephemeral idle thread without a model turn. SIGTERM exited the child, `list_agents` reported disconnected, and no process remains. The Copilot CLI source remained connected. This verifies the two activity sources are independently operable under the no-paid-plan custom endpoint route. Generic VS Code BYOK remains a distinct setup requiring `chat.agentHost.byokModels.enabled`.
 
 ## Phase 4 — Product UI and consent
 
-- [ ] Render one character per provider-identified agent, clustered by reported session relationship.
+- [x] Render distinct provider-reported agent identities and session clusters, including Codex session trees/parent thread relationships and Copilot observed subagent invocations. A provider connection is not drawn as an invented worker (ADRs 0005/0006; `office-state.test.js`, browser fixtures).
 - [x] Extract the renderer and browser behavior into checked sibling modules; add same-origin `/state` polling, render discovered session cards/figures, and remove thread creation. Tests cover script-safe title embedding and browser state validation. A local HTTP/Chrome smoke test verified module loading, session rendering, live polling updates, and a 390px viewport without overflow or page errors. Full clustering, per-agent identity, and the accepted fictional layer remain pending.
-- [ ] Add active-first view and opt-in current-run sleeping/off-duty view for provider-reported terminal agents.
-- [ ] Add compact source health and optional hidden-by-default coverage view.
-- [ ] Add safe summaries, lifecycle/freshness, distinct source states, accessible text, keyboard support, responsive layout, and reduced motion.
+- [x] Add deterministic active-first office/roster ordering and opt-in current-run ended-agent/off-duty view. Only explicit provider end signals qualify; archive, stale, disconnected and turn outcome are not synthesized into termination (`office-ui.test.js`, browser sorting/orphan-order regressions; ADRs 0005/0006/0008).
+- [x] Add compact independent source health, provider enable/disable/refresh controls, optional collapsed coverage, generic factual feed, and selected-agent provenance/details. Fictional scenes never enter this feed (ADRs 0001/0005/0008).
+- [x] Add provider-title text with sensitivity/hide controls (not guaranteed-safe summaries), factual lifecycle/freshness/health, semantic labels, keyboard selection/focus restoration, responsive layouts and reduced-motion alternatives. Node/browser regressions and actual HTTP fixtures verify these surfaces; manual screen-reader acceptance remains a separate release gate (ADRs 0002/0004/0005).
 - [x] Approve the UI presentation/design model: factual provider layer plus labeled fictional office ambience, task-title motifs, local visual identity, stateful props, idle-only vignettes, and explicit agent departure behavior. Evidence/decisions: [ADR 0005](./adr/0005-observable-activity-and-office-presentation.md), [ADR 0006](./adr/0006-agent-identity-and-office-grouping.md), [ADR 0008](./adr/0008-stateful-office-ambience.md). Implementation is in progress; see the following checked slice and remaining UI acceptance items.
-- [ ] Implement the approved office UI and personalization; do not add prompt-summary consent or transcript-based task processing in V1.
+- [x] Implement ADR 0008 world projection: authored state dialogue/voice flavors, 20-work-type/10-domain motifs (at most four), independent title/fiction controls, idle-only shuffled scenes, real-work interruption, persistent visible-cleanup props, reused own-desk setup exception, explicit-end abandoned/dim/whimsical scenes, and deterministic/local appearance overrides. Public world tests check fact/feed immutability and scene lifetimes; private preference tests cover validation, corruption, atomic writes, workspace isolation, and independent identity updates. No prompt summarization or transcript-driven personalization is included.
 
 ## Phase 5 — Distribution and release
 
-- [ ] Verify install/open/close lifecycle in VS Code and Copilot App after reloading the current implementation. Prior Phase 0 host evidence does not validate these new changes; the available canvas provider still advertised the previous thread-creation action before reload.
-- [ ] Verify Copilot-only, Codex-only, both, neither, no entitlement, no sessions, unsupported, offline/stale, and confirmed-empty states.
-- [ ] Verify open/focus, accessibility, reduced motion, and tested scale.
-- [ ] Update installation, consent, privacy, provider coverage, limitations, and troubleshooting documentation.
+- [x] Verify current canvas capability discovery, open/read-only-action/reopen in the active VS Code host, and concurrent open/reopen/listener-close/runtime-shutdown in a fresh isolated CLI/SDK runtime without model turns. Current capabilities expose only the four read-only/provider actions; no thread creation.
+- [ ] Verify latest visual/reload/close acceptance in GitHub Copilot App itself. Its earlier Phase 0 runtime evidence is retained but does not accept the current UI.
+- [x] Verify fixture-level provider independence, disabled/offline/missing/empty/partial states, malformed metadata, no synthetic fallback, and no-entitlement source separation through controller/state/browser tests. The live current host uses the previously confirmed custom-endpoint/no-paid-Copilot route; no model calls are needed for dashboard actions.
+- [ ] Complete latest App provider-combination manual acceptance; do not label fixture-only coverage as independently verified App behavior.
+- [x] Verify supported canvas open/focus/reopen, keyboard focus and reduced motion with browser/runtime checks, and current clustered-renderer scale at 100 sessions/300 agents plus the host.
+- [ ] Complete manual screen-reader/assistive-technology review; synthetic scale is not an SLA or proof of all host performance.
+- [x] Update installation/controls, storage lifetimes, consent, protocol/event coverage, privacy, unsupported navigation/termination semantics, optional browser test instructions, limitations and troubleshooting in README/plan/ADRs and this tracker.
 - [ ] Release gate: labels match actual behavior; preview is optional and visibly separate; no unresolved release-blocking Phase 0 gates.
 
 ## Update protocol

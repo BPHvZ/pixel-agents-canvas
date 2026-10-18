@@ -1,7 +1,7 @@
 # Pixel Agents Office: Product plan
 
-**Status:** Phase 0 and UI design approved; implementation in progress, not release-ready. Verified delivery and remaining gates are tracked in [docs/implementation-progress.md](./docs/implementation-progress.md#status-snapshot--2026-10-17).
-**Last updated:** 2026-10-17
+**Status:** Phase 0 and UI design approved; implementation in progress, not release-ready. Verified delivery and remaining gates are tracked in [docs/implementation-progress.md](./docs/implementation-progress.md#status-snapshot--2026-10-18).
+**Last updated:** 2026-10-18
 
 ## Product goal
 
@@ -37,16 +37,13 @@ See [docs/phase-0-feasibility.md](./docs/phase-0-feasibility.md) for primary-sou
 
 The committed initial implementation (`35e7fe7`) listens to hosting Copilot session hooks and renders its observed session plus metadata-only Codex threads. After explicit opt-in, the Codex adapter paginates `thread/list` with `useStateDbOnly`, discards unapproved content fields, resumes active threads with `excludeTurns: true`, and tracks notifications. It no longer creates threads. Runtime-compatible JavaScript and custom declarations pass ESLint and strict TypeScript; the 35-test suite includes negative no-`any` checks. The browser module is checked separately from HTML. Portable agent guides and skills were published in `d7bf978`, with the ADR/progress maintenance gate in `f8bab81`; CI passed for all three commits.
 
-The shared capability/health model and provider recovery are incomplete. Hosting-session hooks and unsupported-navigation disclosures need current-code host verification; unrelated Copilot conversation enumeration remains unsupported, not a promised future capability. Provider-identified agent/subagent clusters, factual event feed/coverage, accessibility, title controls/preferences, and the accepted fictional-office layer remain pending. The initial renderer/browser smoke check is not acceptance of ADR 0008 or release readiness. Preview/sample data is never a product substitute.
+The current implementation adds unified provider health/capabilities, opt-in discovery recovery, provider-reported Codex session-tree grouping and Copilot subagent identities, factual event feed/coverage, checked clustered UI, local appearance/title controls, and the separate stateful fictional-office layer (ADRs 0001–0008). The current VS Code hosting session has opened and reopened the new canvas with the same instance URL and successfully invoked its read-only action. A disposable real CLI/SDK session additionally verified discovery, open/action/reopen/close, listener shutdown, and clean runtime exit without a model turn. Fixture-browser checks cover keyboard selection, preference persistence, title hiding with motifs retained, provider toggles, reduced motion, and a narrow viewport. Provider and UI integration checks now pass lint, strict typing, 120 tests and 12 real-browser regressions; latest Copilot App visual verification remains outstanding. Unrelated Copilot conversation enumeration and cross-session navigation remain unsupported. No release-completion claim is made from local tests or earlier Phase 0 evidence; preview/sample activity is never a product fallback.
 
-### Next development sequence
+### Remaining verification sequence
 
-1. Complete unified provider capability/availability and recovery/lifecycle tests (ADRs 0001/0007).
-2. Verify current hosting-session wiring and reload/open/action/reopen behavior in both target hosts, reporting unperformed checks explicitly (ADRs 0001/0003/0007).
-3. Implement factual agent/session clusters, feed/coverage, accessible controls, and title visibility (ADRs 0002/0004/0005/0006).
-4. Implement the separate fictional-office layer and approved personalization/lifecycle rules (ADR 0008), then rerun representative UI scale and release checks.
-
-The [progress tracker](./docs/implementation-progress.md) holds command/CI evidence and detailed unchecked acceptance work. Phase 0 host/scale evidence does not validate later code changes.
+1. Preserve the tested provider/version boundary: Codex CLI 0.163.0 and documented hosting SDK events, with no inferred session termination or cross-session navigation (ADRs 0001/0007).
+2. Complete latest GitHub Copilot App visual/reload/close acceptance and manual assistive-technology review. Current VS Code open/action/reopen, fresh SDK runtime lifecycle, 120 Node/policy tests, 12 browser regressions, and 100-session/300-worker synthetic scale are verified (ADRs 0003/0005).
+3. Release only with remaining host/manual gates resolved. The [progress tracker](./docs/implementation-progress.md) is the evidence record; historical Phase 0 and fixture evidence are not replacements for latest App verification.
 
 ## Proposed architecture
 

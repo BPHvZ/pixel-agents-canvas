@@ -15,6 +15,12 @@ Provider integrations are independently enabled. Codex discovery may launch an e
 
 An active paid GitHub Copilot plan is not a requirement: the Copilot App officially supports third-party BYOK model providers, and VS Code supports provider routes beyond Copilot. GitHub sign-in may remain required by a host. Keep host, harness/activity source, model route, billing route, and discovery source distinct. A Copilot CLI session proxied to a Codex model is not a Codex CLI thread. Reuse concrete patterns from the inspirations (normalized statuses/freshness, provider adapter contract, reported hierarchy, and map/list visualization), but do not import their file-based Codex bridge, transcript reads, orchestration model, or assets without separate evidence/license review.
 
+## Protocol clarification (2026-10-18)
+
+Codex `thread/closed` reports app-server runtime unload/subscription closure, not persisted conversation completion. The [CLI 0.163.0 unsubscribe tests](https://github.com/openai/codex/blob/129b8ec7ee6f4511557a4856279f529025c25af4/codex-rs/app-server/tests/suite/v2/thread_unsubscribe.rs) exercise unsubscribe/unload followed by later resume. Map this signal to unmonitored/unknown, not a completed agent or abandoned office cluster. A turn outcome, archive, subscription close, stale signal, and explicitly ended provider agent/session remain separate facts. ADR 0008's departure/abandonment rules require a genuine provider end signal; unsupported Codex end semantics are not synthesized from `thread/closed`.
+
+The hosting adapter now uses the documented SDK session-event subscription, discarding content-bearing event fields. `session.idle` is an explicit idle signal; `subagent.started/completed/failed` provide per-invocation identity, and `session.shutdown` is distinct from an assistant turn ending. Supported installed contracts were checked against the bundled SDK declarations; unsupported per-agent detail remains unknown.
+
 ## Consequences
 
 - Codex may offer wider session discovery than Copilot; the product promises truthful coverage, not parity.

@@ -75,6 +75,7 @@ export interface CodexDiscoveryOptions {
 export interface CodexActivityEvent {
     provider: "codex";
     id: string;
+    waitingReason?: "approval" | "input" | null;
     state: AgentState;
     event: CodexActivityEventName;
     at: number;

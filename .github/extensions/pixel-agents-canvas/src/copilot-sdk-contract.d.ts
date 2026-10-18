@@ -15,7 +15,7 @@ declare module "@github/copilot-sdk/extension" {
         name: string;
         description: string;
         inputSchema: ObjectSchema;
-        handler: () => unknown | Promise<unknown>;
+        handler: (context: { input?: unknown }) => unknown | Promise<unknown>;
     }
 
     export interface CanvasDefinition {
@@ -38,9 +38,10 @@ declare module "@github/copilot-sdk/extension" {
     }
 
     export interface ExtensionSession {
-        on(event: "session.end", callback: () => void | Promise<void>): void;
+        readonly sessionId: string;
+        on(handler: (event: { type: string; data?: unknown; timestamp?: string; id?: string; agentId?: string }) => void): () => void;
     }
 
     export function createCanvas(definition: CanvasDefinition): CanvasDefinition;
-    export function joinSession(options: { canvases: CanvasDefinition[]; hooks: SessionHooks }): Promise<ExtensionSession>;
+    export function joinSession(options: { canvases: CanvasDefinition[]; hooks?: SessionHooks }): Promise<ExtensionSession>;
 }
