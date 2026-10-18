@@ -44,6 +44,10 @@ _Avoid_: Inferred worker
 A provider-observed lifecycle or work signal associated with a session or agent, including working, waiting, blocked, paused, or terminal states when exposed.
 _Avoid_: Simulated event
 
+**Unknown activity state**:
+A factual state used when the provider does not currently supply an interpretable status; it is not equivalent to idle, ended, or resumed work.
+_Avoid_: Idle, abandoned
+
 **Task summary**:
 A concise, sanitized description of a session's task, sourced from provider metadata by default or from explicitly consented transient prompt summarization where supported.
 _Avoid_: Transcript, prompt excerpt
@@ -65,7 +69,7 @@ Explicitly labeled illustrative/sample data that is never presented as real prov
 _Avoid_: Live, connected (for sample data)
 
 **Decorative dialogue**:
-Fictional, authored character text shown as a speech bubble and explicitly labeled as persona flavor, not as actual agent output or provider activity.
+Fictional, authored character text shown in a speech bubble and identified to assistive technology as fiction, not as agent output or provider activity.
 _Avoid_: Agent response, activity message
 
 **Character flavor**:
@@ -85,9 +89,33 @@ A one-time fictional arrival action in which a new agent tidies its own dirty de
 _Avoid_: Provider status, activity event
 
 **Abandoned cluster**:
-A session cluster with no remaining agents after explicit provider-reported session closure; it is distinct from a stale or disconnected cluster.
-_Avoid_: Stale session, disconnected session
+A session cluster with no non-ended agents after explicit provider-reported session closure; ended characters may remain visible. It is distinct from a quiet cluster or stale/disconnected source.
+_Avoid_: Quiet cluster, stale session
+
+**Quiet cluster**:
+A fictional office presentation used when no fresh working, waiting, or failed activity is observed, including when the source is disconnected; it does not assert that the provider reports the session idle or ended.
+_Avoid_: Provider-idle session, abandoned cluster
+
+**Off-duty character**:
+A provider-identified character whose agent has explicitly ended but remains visible for decorative office activity while retaining its factual ended status.
+_Avoid_: Active agent, resumed worker
 
 **Scene motif**:
 One or more decorative visual cues selected from a provider title to suggest broad themes; they do not establish the session's actual project, technology, or work.
 _Avoid_: Task evidence, provider metadata
+
+**Source release**:
+A versioned snapshot of this repository made available to users; it does not by itself install or update the canvas.
+_Avoid_: Canvas distribution
+
+**Rolling release draft**:
+An unpublished release draft that accumulates merged changes until it is manually published as one release.
+_Avoid_: Per-merge published release
+
+**Release batch**:
+The changes accumulated in the rolling release draft since the last published release.
+_Avoid_: Individual merge release
+
+**Canvas distribution**:
+A supported way to install or update the canvas; a GitHub source release is not a distribution channel.
+_Avoid_: GitHub source release

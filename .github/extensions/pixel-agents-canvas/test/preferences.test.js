@@ -24,7 +24,7 @@ test("defaults are complete, independently mutable presentation preferences", ()
     const expected = {
         hideTitles: false,
         hiddenSessionTitles: {},
-        showEnded: false,
+        showEnded: true,
         vignettes: true,
         dialogue: true,
         appearances: {},

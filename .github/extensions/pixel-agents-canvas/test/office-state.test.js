@@ -38,6 +38,18 @@ test("silence, turn completion, archive, and subscription closure never fabricat
     assert.equal(snapshot.agents[0].connected, false);
 });
 
+test("Copilot subagents keep stable internal names and discard task-description display names", () => {
+    const state = createOfficeState({ clock: () => 1000 });
+    state.bindHostingSession("host");
+    state.copilotEvent({ id: "start", type: "subagent.started", data: { toolCallId: "call", agentName: "explore", agentDisplayName: "PRIVATE task description", agentType: "explore" } });
+    const snapshot = state.snapshot();
+    const child = snapshot.agents.find((item) => item.sourceId === "tool:call");
+    assert.equal(child?.name, "explore");
+    assert.equal(child?.role, "explore");
+    assert.equal(child?.state, "working");
+    assert.equal(JSON.stringify(snapshot).includes("PRIVATE task description"), false);
+});
+
 test("Copilot reported subagents have distinct identities and end independently without exposing payloads", () => {
     const state = createOfficeState({ clock: () => 2000000 });
     state.bindHostingSession('host');

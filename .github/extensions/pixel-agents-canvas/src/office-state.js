@@ -214,10 +214,10 @@ export function createOfficeState({ clock = Date.now, staleAfterMs = 45000 } = {
             if (typeof data.toolCallId !== 'string' || !data.toolCallId) return;
             const id = `${hostingId}:agent:tool:${data.toolCallId}`;
             // parentId is a task-registry ID, not the parent's spawning tool-call ID.
-            const child = agents.get(id) ?? { ...initialAgent(hostingId, 'Copilot', `tool:${data.toolCallId}`, observedAt), name: text(data.agentName, 80), role: text(data.agentType, 80), parentAgentId: event.type === 'subagent.started' && data.parentId === undefined ? rootId : null };
+            const child = agents.get(id) ?? initialAgent(hostingId, 'Copilot', `tool:${data.toolCallId}`, observedAt);
             if (at < (copilotActivityAt.get(id) ?? 0)) return;
             copilotActivityAt.set(id, at);
-            upsertAgent({ ...child, state: event.type === 'subagent.started' ? 'working' : event.type === 'subagent.failed' ? 'failed' : 'completed', ended: event.type !== 'subagent.started', endedAt: event.type !== 'subagent.started' ? at : null, observedAt, lastActivityAt: sourceAt ?? child.lastActivityAt });
+            upsertAgent({ ...child, name: text(data.agentName, 80) ?? child.name, role: text(data.agentType, 80) ?? child.role, parentAgentId: event.type === 'subagent.started' && data.parentId === undefined ? rootId : child.parentAgentId, state: event.type === 'subagent.started' ? 'working' : event.type === 'subagent.failed' ? 'failed' : 'completed', ended: event.type !== 'subagent.started', endedAt: event.type !== 'subagent.started' ? at : null, observedAt, lastActivityAt: sourceAt ?? child.lastActivityAt });
             return;
         }
         if (typeof event.agentId === 'string') return; // Child payloads without a mapped stable identity cannot alter the main agent.

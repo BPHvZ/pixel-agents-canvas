@@ -30,7 +30,7 @@ const MAX_RECORD_BYTES = 1_048_576;
 
 /** @returns {Preferences} */
 export function defaultPreferences() {
-    return { hideTitles: false, hiddenSessionTitles: {}, showEnded: false, vignettes: true, dialogue: true, appearances: {} };
+    return { hideTitles: false, hiddenSessionTitles: {}, showEnded: true, vignettes: true, dialogue: true, appearances: {} };
 }
 
 /** @param {unknown} value @returns {value is Record<string, unknown>} */

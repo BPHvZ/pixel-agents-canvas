@@ -12,7 +12,7 @@
 
 /* Only the decorative sprite travels; factual identity/status and focus stay at its desk. */
 .scene-space{height:76px;position:relative;pointer-events:none}
-.scene-space:after{content:"OFFICE FICTION · COMMON SPACE";position:absolute;left:0;right:0;bottom:4px;text-align:center;font:7px ui-monospace,monospace;color:#314b3d}
+.scene-space:after{content:none}
 .desk-station{isolation:auto}
 .character{z-index:auto}
 .character>.pixel-person{z-index:5;pointer-events:none;transform:translate(var(--scene-x,0px),var(--scene-y,0px));transition:transform .7s ease}
@@ -23,3 +23,13 @@
 .office-prop.being-collected{outline:2px solid #526d4d;background:#f2e8c7}
 .pixel-person[data-carrying]:after{content:attr(data-carrying);position:absolute;right:-10px;bottom:7px;padding:2px;background:#f2e8c7;border:1px solid #526d4d;font-size:13px}
 @media(prefers-reduced-motion:reduce){.character>.pixel-person{transition:none}}
+
+.character{overflow:visible}
+.session-cluster.quiet-cluster{background:linear-gradient(#18231d3d,#18231d3d),#d2c3912e;border-color:#647265}
+.character>.dialogue-bubble{position:absolute;top:-42px;left:50%;z-index:10;width:max-content;min-width:100px;max-width:min(180px,calc(100vw - 36px));transform:translateX(-50%);padding:7px 10px;border:1px solid #697650;border-radius:9px;background:#f3edcf;color:#2b4335;box-shadow:0 3px 10px #18261a80;font-size:11px;line-height:1.35;text-align:center;white-space:normal;pointer-events:none;animation:dialogue-pop var(--dialogue-duration,4s) ease both;animation-delay:var(--dialogue-delay,0ms)}
+.character>.dialogue-bubble:after{content:"";position:absolute;bottom:-5px;left:50%;width:8px;height:8px;background:#f3edcf;border-right:1px solid #697650;border-bottom:1px solid #697650;transform:translateX(-50%) rotate(45deg)}
+.quiet-effect{position:absolute;z-index:3;display:grid;place-items:center;width:24px;height:24px;border:1px dashed #cdd6ba88;border-radius:50%;background:#33423766;color:#f0edcf;font-size:15px;pointer-events:none;animation:quiet-float 4s ease-in-out both}
+@keyframes quiet-float{0%{opacity:0;transform:translateY(3px)}10%,90%{opacity:.75;transform:translateY(0)}100%{opacity:0;transform:translateY(-3px)}}
+@media(prefers-reduced-motion:reduce){.quiet-effect{animation:none!important}}
+@keyframes dialogue-pop{0%{opacity:0;transform:translate(-50%,5px) scale(.96)}10%,90%{opacity:1;transform:translate(-50%,0) scale(1)}100%{opacity:0;transform:translate(-50%,-2px) scale(.98)}}
+@media(prefers-reduced-motion:reduce){.character>.dialogue-bubble{animation:none!important}}

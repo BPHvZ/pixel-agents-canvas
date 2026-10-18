@@ -51,7 +51,7 @@ export function parsePreferences(value) {
         const appearance = parseAppearance(raw);
         if (appearance) appearances.push([id, appearance]);
     }
-    return { hideTitles: value.hideTitles === true, hiddenSessionTitles: Object.fromEntries(hidden), showEnded: value.showEnded === true, vignettes: value.vignettes !== false, dialogue: value.dialogue !== false, appearances: Object.fromEntries(appearances) };
+    return { hideTitles: value.hideTitles === true, hiddenSessionTitles: Object.fromEntries(hidden), showEnded: value.showEnded !== false, vignettes: value.vignettes !== false, dialogue: value.dialogue !== false, appearances: Object.fromEntries(appearances) };
 }
 
 /** @param {unknown} value @param {readonly string[]} choices @returns {boolean} */
@@ -68,6 +68,12 @@ function deskIndex(value) { return typeof value === "number" && Number.isInteger
 function worldRecords(value, validate) { return Array.isArray(value) && list(value).every((item) => record(item) && validate(item)); }
 /** @param {Record<string, unknown>} value @returns {boolean} */
 function fictionalLifetime(value) { return value.fictional === true && timestamp(value.startedAt) !== null && timestamp(value.endsAt) !== null; }
+/** @param {Record<string, unknown>} item @returns {boolean} */
+function worldEffect(item) {
+    return strings(item.id, item.clusterId, item.spaceId, item.label) &&
+        choice(item.kind, ["ghost", "spider", "screen-flicker", "chair-movement"]) &&
+        position(item.position) && fictionalLifetime(item);
+}
 /** @param {unknown} value @returns {boolean} */
 function worldAppearance(value) {
     return record(value) && typeof value.nickname === "string" && value.nickname.length <= 64 &&
@@ -86,7 +92,7 @@ function worldView(value) {
         record(value.motion) && value.motion.optional === true && value.motion.reducedMotion === "static" && value.motion.flashing === false &&
         worldRecords(value.clusters, (item) => strings(item.id, item.sessionId, item.spaceId, item.titleVisibilityNote, item.statusLabel) &&
             position(item.position) && provider(item.provider) && nullableStrings(item.title) &&
-            [item.titleHidden, item.abandoned, item.dimmed, item.visible].every((flag) => typeof flag === "boolean") &&
+            [item.titleHidden, item.abandoned, item.quiet, item.dimmed, item.visible].every((flag) => typeof flag === "boolean") &&
             (item.endedAt === null || timestamp(item.endedAt) !== null) &&
             worldRecords(item.motifs, (motif) => strings(motif.id, motif.label, motif.symbol))) &&
         worldRecords(value.characters, (item) => strings(item.id, item.agentId, item.sessionId, item.clusterId, item.spaceId, item.deskId, item.statusLabel) &&
@@ -105,8 +111,8 @@ function worldView(value) {
             list(item.participants).every((id) => typeof id === "string") && fictionalLifetime(item)) &&
         worldRecords(value.dialogue, (item) => strings(item.id, item.agentId, item.label, item.text) &&
             choice(item.flavor, voices) && item.placement === "secondary" && fictionalLifetime(item)) &&
-        worldRecords(value.abandonedEffects, (item) => strings(item.id, item.clusterId, item.spaceId, item.label) &&
-            choice(item.kind, ["ghost", "spider", "screen-flicker", "chair-movement"]) && position(item.position) && fictionalLifetime(item));
+        worldRecords(value.abandonedEffects, worldEffect) &&
+        worldRecords(value.quietEffects, worldEffect);
 }
 
 /** Validate the complete public page contract without collapsing provider observations into cards.
@@ -167,7 +173,7 @@ function stateLabel(agent) {
     return agent.ended ? "Agent ended" : agent.state === "waiting" && agent.waitingReason ? `Waiting for ${agent.waitingReason}` : statusText[agent.state];
 }
 /** @param {OfficeAgent} agent @returns {string} */
-function freshnessLabel(agent) { return `${agent.freshness === "unknown" ? "Freshness unknown" : agent.freshness === "stale" ? "Stale observation" : "Fresh observation"} · ${agent.connected ? "connected" : "disconnected"}`; }
+function freshnessLabel(agent) { return `${agent.freshness === "unknown" ? "Freshness unknown" : agent.freshness} · ${agent.connected ? "connected" : "disconnected"}`; }
 /** @param {OfficeAgent} agent @returns {string} */
 function reportedName(agent) { return agent.name || `${agent.provider} agent`; }
 /** @param {OfficeAgent} agent @param {Preferences} preferences @returns {Appearance} */
@@ -178,17 +184,18 @@ function appearanceFor(agent, preferences) {
 function sprite(look, extra = "") {
     return `<span class="pixel-person ${look.outfit} ${look.accessory} ${extra}" style="--agent:${look.palette}" aria-hidden="true"><span class="hair"></span><span class="face"></span><span class="body"></span><span class="feet"></span></span>`;
 }
-/** @param {OfficeSession} session @param {Preferences} preferences @returns {string} */
-function sessionTitle(session, preferences) {
+/** @param {OfficeSession} session @param {Preferences} preferences @param {import("./world-types.js").WorldView|undefined} [world] @returns {string} */
+function sessionTitle(session, preferences, world) {
     if (session.closed) return "Session ended";
     if (preferences.hideTitles || preferences.hiddenSessionTitles[session.id]) return "Session title hidden";
+    if (world?.clusters.find((cluster) => cluster.sessionId === session.id)?.quiet) return "Quiet scene";
     return session.title || "Untitled session";
 }
 /** @param {OfficeAgent} agent @param {Preferences} preferences @param {string|null} selected @returns {string} */
 function character(agent, preferences, selected) {
     const look = appearanceFor(agent, preferences);
     const name = look.nickname || reportedName(agent);
-    return `<div class="desk-station ${agent.ended ? "off-duty" : ""}" data-station="${escapeHtml(agent.id)}"><div class="pixel-desk" aria-hidden="true"><span class="monitor ${agent.state}"></span><span class="keyboard"></span><span class="desk-prop ${look.deskProp}"></span></div><button type="button" class="character ${agent.state} ${agent.freshness} ${agent.connected ? "" : "disconnected"}" data-agent="${escapeHtml(agent.id)}" aria-pressed="${agent.id === selected}" aria-label="${escapeHtml(`${name}, ${agent.provider}, ${stateLabel(agent)}, ${freshnessLabel(agent)}`)}">${sprite(look)}<span class="character-name">${escapeHtml(name)}</span><span class="character-provider">${agent.provider}</span><span class="status-chip ${agent.state}">${statusSymbol[agent.state]} ${stateLabel(agent)}</span><span class="freshness">${agent.freshness}${agent.connected ? "" : " · offline"}</span></button></div>`;
+    return `<div class="desk-station ${agent.ended ? "off-duty" : ""}" data-station="${escapeHtml(agent.id)}"><div class="pixel-desk" aria-hidden="true"><span class="monitor ${agent.state}"></span><span class="keyboard"></span><span class="desk-prop ${look.deskProp}"></span></div><button type="button" class="character ${agent.state} ${agent.freshness} ${agent.connected ? "" : "disconnected"}" data-agent="${escapeHtml(agent.id)}" aria-pressed="${agent.id === selected}" aria-label="${escapeHtml(`${name}, ${agent.provider}, ${stateLabel(agent)}, ${freshnessLabel(agent)}`)}">${sprite(look)}<span class="character-name">${escapeHtml(name)}</span><span class="character-provider">${agent.provider}</span><span class="status-chip ${agent.state}">${statusSymbol[agent.state]} ${stateLabel(agent)}</span><span class="freshness">${escapeHtml(freshnessLabel(agent))}</span></button></div>`;
 }
 /** @param {OfficeAgent} agent @returns {number} */
 function activityOrder(agent) {
@@ -207,48 +214,48 @@ function groupOrder(group) {
     return first ? activityOrder(first) : group.session?.closed ? 3 : 2;
 }
 
-/** @param {OfficePageState} state @param {string|null} selected @returns {string} */
-function floorMarkup(state, selected) {
+/** @param {OfficePageState} state @param {string|null} selected @param {import("./world-types.js").WorldView|undefined} world @returns {string} */
+function floorMarkup(state, selected, world) {
     const { snapshot, preferences } = state;
     const agents = snapshot.agents.filter((agent) => preferences.showEnded || !agent.ended).sort(agentOrder);
     const orphaned = agents.filter((agent) => !snapshot.sessions.some((session) => session.id === agent.sessionId));
     const groups = [...snapshot.sessions.map((session) => ({ session, agents: agents.filter((agent) => agent.sessionId === session.id) })),
         ...(orphaned.length ? [{ session: null, agents: orphaned }] : [])]
         .sort((left, right) => groupOrder(left) - groupOrder(right) || identityOrder(left.session?.id ?? "", right.session?.id ?? ""));
-    const markup = groups.filter(({ session, agents: members }) => members.length || !session?.closed || session.endedAt !== null).map(({ session, agents: members }, index) => session === null ? `<section class="session-cluster"><header class="cluster-heading"><h3>Session metadata unavailable</h3></header><p class="muted">No session relationship is inferred.</p><div class="desks">${members.map((agent) => character(agent, preferences, selected)).join("")}</div></section>` : `<section class="session-cluster ${session.closed && !members.some((agent) => !agent.ended) ? "abandoned" : ""}" data-session="${escapeHtml(session.id)}" aria-label="${escapeHtml(`${session.provider}: ${sessionTitle(session, preferences)}`)}"><header class="cluster-heading"><span class="cluster-number" aria-hidden="true">${String(index + 1).padStart(2, "0")}</span><div><span class="provider-tag ${session.provider.toLowerCase()}">${session.provider}</span><h3>${escapeHtml(sessionTitle(session, preferences))}</h3><span class="cluster-meta">${session.closed ? `Explicitly ended · ${timeText(session.endedAt)}` : `${members.length} observed ${members.length === 1 ? "agent" : "agents"}${session.archived ? " · archived" : ""}`}</span></div>${session.closed ? "" : `<button type="button" class="title-control" data-title="${escapeHtml(session.id)}" aria-label="${preferences.hiddenSessionTitles[session.id] ? "Show" : "Hide"} title for this session" aria-pressed="${preferences.hiddenSessionTitles[session.id] === true}" ${preferences.hideTitles ? "disabled" : ""}>${preferences.hiddenSessionTitles[session.id] ? "Show title" : "Hide title"}</button>`}</header><div class="motifs" data-motifs="${escapeHtml(session.id)}"></div><div class="scene-space" aria-hidden="true"></div><div class="desks">${members.length ? members.map((agent) => character(agent, preferences, selected)).join("") : `<p class="cluster-empty">${session.closed ? "Session ended. A little quiet remains." : "No provider-reported agent identities in this session."}</p>`}</div></section>`).join("");
-    return markup || `<div class="empty-state"><span class="empty-symbol" aria-hidden="true">⌂</span><h3>A quiet little office</h3><p>${snapshot.agents.length ? "Ended agents are hidden. Enable “Show ended agents” to inspect them." : "No provider-reported agents yet. The office never invents workers to fill a desk."}</p><p class="muted">Check source coverage below, or enable local Codex to discover its sessions.</p></div>`;
+    const markup = groups.filter(({ session, agents: members }) => members.length || !session?.closed || session.endedAt !== null).map(({ session, agents: members }, index) => session === null ? `<section class="session-cluster"><header class="cluster-heading"><h3>Session unavailable</h3></header><div class="desks">${members.map((agent) => character(agent, preferences, selected)).join("")}</div></section>` : `<section class="session-cluster ${session.closed && !members.some((agent) => !agent.ended) ? "abandoned" : ""}" data-session="${escapeHtml(session.id)}" aria-label="${escapeHtml(`${session.provider} session ${String(index + 1).padStart(2, "0")}: ${sessionTitle(session, preferences, world)}`)}"><header class="cluster-heading"><span class="cluster-number" aria-hidden="true">${String(index + 1).padStart(2, "0")}</span><div><span class="provider-tag ${session.provider.toLowerCase()}">${session.provider}</span><h3>${escapeHtml(sessionTitle(session, preferences, world))}</h3><span class="cluster-meta">${session.closed ? `Explicitly ended · ${timeText(session.endedAt)}` : `${members.length} ${members.length === 1 ? "agent" : "agents"}${session.archived ? " · archived" : ""}`}</span></div>${session.closed ? "" : `<button type="button" class="title-control" data-title="${escapeHtml(session.id)}" aria-label="${preferences.hiddenSessionTitles[session.id] ? "Show" : "Hide"} title for this session" aria-pressed="${preferences.hiddenSessionTitles[session.id] === true}" ${preferences.hideTitles ? "disabled" : ""}>${preferences.hiddenSessionTitles[session.id] ? "Show title" : "Hide title"}</button>`}</header><div class="motifs" data-motifs="${escapeHtml(session.id)}" aria-label="Decorative scene motifs"></div><div class="scene-space" aria-hidden="true"></div><div class="desks">${members.length ? members.map((agent) => character(agent, preferences, selected)).join("") : `<p class="cluster-empty">${session.closed ? "Session ended" : "No agents observed"}</p>`}</div></section>`).join("");
+    return markup || `<div class="empty-state"><span class="empty-symbol" aria-hidden="true">⌂</span><h3>No visible agents</h3>${snapshot.agents.some((agent) => agent.ended && !preferences.showEnded) ? '<p>Show ended agents to include ended identities.</p>' : ""}</div>`;
 }
-/** @param {OfficeAgent} agent @param {OfficePageState} state @returns {string} */
-function detailsMarkup(agent, state) {
+/** @param {OfficeAgent} agent @param {OfficePageState} state @param {import("./world-types.js").WorldView|undefined} world @returns {string} */
+function detailsMarkup(agent, state, world) {
     const look = appearanceFor(agent, state.preferences);
     const session = state.snapshot.sessions.find((item) => item.id === agent.sessionId);
     const health = state.snapshot.providers.find((item) => item.id === agent.provider);
     const rows = [
-        ["Provider identity", reportedName(agent)], ["Provider role", agent.role || "Not reported"], ["Activity source", `${agent.provider} · ${health?.source ?? "unknown"}`],
-        ["Source agent ID", agent.sourceId], ["Session", session ? sessionTitle(session, state.preferences) : "Metadata unavailable"], ["Source session ID", session?.sourceId ?? "Not reported"],
+        ["Provider name", reportedName(agent)], ["Provider role", agent.role || "Not reported"], ["Activity source", `${agent.provider} · ${health?.source ?? "unknown"}`],
+        ["Source agent ID", agent.sourceId], ["Source session ID", session?.sourceId ?? "Not reported"],
         ["Parent agent", agent.parentAgentId ?? "Not reported"], ["Parent session", session?.parentSessionId ?? "Not reported"], ["Last turn outcome", agent.lastTurnOutcome ?? "Not reported"],
         ["Last observed", timeText(agent.observedAt)], ["Last activity", timeText(agent.lastActivityAt)], ["Lifecycle", agent.ended ? `Explicitly ended · ${timeText(agent.endedAt)}` : "No agent end reported"],
     ];
     /** @param {string[]} choices @param {string} selected @returns {string} */
     const options = (choices, selected) => choices.map((choice) => `<option value="${choice}" ${choice === selected ? "selected" : ""}>${choice[0]?.toUpperCase()}${choice.slice(1)}</option>`).join("");
-    return `<div class="detail-heading"><p class="eyebrow">Selected character</p><button type="button" id="close-details" aria-label="Close character details">×</button></div><div class="identity-portrait">${sprite(look)}<span class="provider-tag ${agent.provider.toLowerCase()}">${agent.provider}</span></div><h2 id="details-title" tabindex="-1">${escapeHtml(look.nickname || reportedName(agent))}</h2>${look.nickname ? `<p class="alias-note">Local nickname · provider: ${escapeHtml(reportedName(agent))}</p>` : ""}<p class="detail-status ${agent.state}">${statusSymbol[agent.state]} ${stateLabel(agent)}</p><p class="freshness detail-freshness">${freshnessLabel(agent)}</p><dl class="facts">${rows.map(([label, value]) => `<div><dt>${label}</dt><dd>${escapeHtml(value ?? "")}</dd></div>`).join("")}</dl><button type="button" class="navigation-unavailable" disabled>↗ Session navigation unavailable</button><p class="muted tiny">No provider navigation destination is exposed. This office does not control sessions.</p><details class="customization"><summary>Customize local appearance</summary><p class="muted tiny">Decorative only. Provider identity, role and activity stay unchanged.</p><form id="appearance-form" data-appearance="${escapeHtml(agent.id)}"><label>Local nickname<input name="nickname" maxlength="64" value="${escapeHtml(look.nickname)}" autocomplete="off" placeholder="Use provider name"></label><div class="form-pair"><label>Palette<input type="color" name="palette" value="${look.palette}"></label><label>Outfit<select name="outfit">${options(["shirt", "vest", "overalls"], look.outfit)}</select></label></div><div class="form-pair"><label>Accessory<select name="accessory">${options(["none", "glasses", "cap"], look.accessory)}</select></label><label>Desk prop<select name="deskProp">${options(["none", "plant", "mug", "book"], look.deskProp)}</select></label></div><button type="submit" class="primary">Save appearance</button><button type="button" id="reset-appearance">Use deterministic look</button></form></details><div id="character-fiction" class="character-fiction"></div>`;
+    return `<div class="detail-heading"><h2 id="details-title" tabindex="-1">${escapeHtml(look.nickname || reportedName(agent))}</h2><button type="button" id="close-details" aria-label="Close agent details">×</button></div><div class="identity-portrait">${sprite(look)}<span class="provider-tag ${agent.provider.toLowerCase()}">${agent.provider}</span></div>${look.nickname ? `<p class="alias-note">Provider name: ${escapeHtml(reportedName(agent))}</p>` : ""}<p class="detail-session">${escapeHtml(session ? sessionTitle(session, state.preferences, world) : "Session unavailable")}</p><p class="detail-status ${agent.state}">${statusSymbol[agent.state]} ${stateLabel(agent)}</p><p class="freshness detail-freshness">${escapeHtml(freshnessLabel(agent))}</p><details class="technical-details"><summary>Technical details</summary><dl class="facts">${rows.map(([label, value]) => `<div><dt>${label}</dt><dd>${escapeHtml(value ?? "")}</dd></div>`).join("")}</dl><p class="muted tiny">Session navigation is unavailable.</p></details><details class="customization"><summary>Appearance</summary><form id="appearance-form" data-appearance="${escapeHtml(agent.id)}"><label>Local nickname<input name="nickname" maxlength="64" value="${escapeHtml(look.nickname)}" autocomplete="off" placeholder="Use provider name"></label><div class="form-pair"><label>Palette<input type="color" name="palette" value="${look.palette}"></label><label>Outfit<select name="outfit">${options(["shirt", "vest", "overalls"], look.outfit)}</select></label></div><div class="form-pair"><label>Accessory<select name="accessory">${options(["none", "glasses", "cap"], look.accessory)}</select></label><label>Desk prop<select name="deskProp">${options(["none", "plant", "mug", "book"], look.deskProp)}</select></label></div><button type="submit" class="primary">Save appearance</button><button type="button" id="reset-appearance">Use deterministic look</button></form></details>`;
 }
 
 /** @type {WeakMap<HTMLElement, string>} */
 const renderedFloors = new WeakMap();
 
 /** Keep the editor attached so polling cannot close a native picker or lose a draft/focus.
- * @param {HTMLElement} details @param {OfficeAgent} agent @param {OfficePageState} state
+ * @param {HTMLElement} details @param {OfficeAgent} agent @param {OfficePageState} state @param {import("./world-types.js").WorldView|undefined} world
  */
-function drawDetails(details, agent, state) {
+function drawDetails(details, agent, state, world) {
     const editor = details.querySelector(".customization");
     const form = editor?.querySelector("form");
     if (!(editor instanceof HTMLDetailsElement) || form?.dataset.appearance !== agent.id) {
-        details.innerHTML = detailsMarkup(agent, state);
+        details.innerHTML = detailsMarkup(agent, state, world);
         return;
     }
     const next = details.ownerDocument.createElement("div");
-    next.innerHTML = detailsMarkup(agent, state);
+    next.innerHTML = detailsMarkup(agent, state, world);
     const nextEditor = next.querySelector(".customization");
     if (!nextEditor) return;
     if (!editor.open) {
@@ -272,7 +279,7 @@ export function drawOffice(document, state, selected = null, world = state.world
     const { snapshot, preferences } = state;
     const visible = snapshot.agents.filter((agent) => preferences.showEnded || !agent.ended).sort(agentOrder);
     const floor = element(document, "agent-layer");
-    const markup = floorMarkup(state, selected);
+    const markup = floorMarkup(state, selected, world);
     if (renderedFloors.get(floor) !== markup) {
         floor.innerHTML = markup;
         renderedFloors.set(floor, markup);
@@ -282,14 +289,14 @@ export function drawOffice(document, state, selected = null, world = state.world
     element(document, "roster").innerHTML = visible.map((agent) => {
         const look = appearanceFor(agent, preferences);
         const session = snapshot.sessions.find((item) => item.id === agent.sessionId);
-        return `<button type="button" class="roster-entry" data-agent="${escapeHtml(agent.id)}" aria-pressed="${selected === agent.id}">${sprite(look)}<span class="roster-identity"><strong>${escapeHtml(look.nickname || reportedName(agent))}</strong><span>${agent.provider} · ${escapeHtml(agent.role || "Role not reported")}</span><span class="roster-session">${escapeHtml(session ? sessionTitle(session, preferences) : "Session unavailable")}</span></span><span class="roster-state"><span class="status-chip ${agent.state}">${statusSymbol[agent.state]} ${stateLabel(agent)}</span><span class="freshness">${freshnessLabel(agent)}</span></span></button>`;
-    }).join("") || '<p class="muted roster-empty">No visible provider-reported agents.</p>';
+        return `<button type="button" class="roster-entry" data-agent="${escapeHtml(agent.id)}" aria-pressed="${selected === agent.id}">${sprite(look)}<span class="roster-identity"><strong>${escapeHtml(look.nickname || reportedName(agent))}</strong><span>${agent.provider}</span><span class="roster-session">${escapeHtml(session ? sessionTitle(session, preferences, world) : "Session unavailable")}</span></span><span class="roster-state"><span class="status-chip ${agent.state}">${statusSymbol[agent.state]} ${stateLabel(agent)}</span><span class="freshness">${freshnessLabel(agent)}</span></span></button>`;
+    }).join("") || '<p class="muted roster-empty">No visible agents.</p>';
     element(document, "feed").innerHTML = [...snapshot.feed].sort((a, b) => b.at - a.at || b.id - a.id).slice(0, 60).map((entry) => {
         const agent = snapshot.agents.find((agent) => agent.id === entry.agentId && agent.provider === entry.provider);
         const name = agent ? appearanceFor(agent, preferences).nickname || reportedName(agent) : "Agent identity unavailable";
         return `<li><span class="feed-dot ${entry.provider.toLowerCase()}" aria-hidden="true"></span><div><span class="feed-provider">${entry.provider} · ${escapeHtml(name)}</span><p>${escapeHtml(entry.label)}</p></div><time>${timeText(entry.at)}</time></li>`;
-    }).join("") || '<li class="muted">No observed activity yet. Fictional scenes never appear here.</li>';
-    element(document, "connection").innerHTML = snapshot.providers.map((health) => `<span class="source-health"><span class="health-dot ${health.availability}" aria-hidden="true"></span><strong>${health.id}</strong> ${escapeHtml(health.availability)}${health.enabled ? "" : " · off"}</span>`).join("") || '<span class="muted">Provider coverage unknown</span>';
+    }).join("") || '<li class="muted">No observed activity yet.</li>';
+    element(document, "connection").innerHTML = snapshot.providers.map((health) => `<span class="source-health"><span class="health-dot ${health.availability}" aria-hidden="true"></span><strong>${health.id}</strong> ${escapeHtml(health.availability)}${health.enabled ? "" : " · off"}</span>`).join("") || '<span class="muted">Source status unknown</span>';
     element(document, "coverage-content").innerHTML = snapshot.providers.map((health) => `<article class="coverage-card"><h3>${health.id} <span class="provider-tag">${health.source}</span></h3><p><strong>${health.availability}</strong> · ${health.enabled ? "enabled" : "disabled"} · observed ${timeText(health.observedAt)}</p><p>${escapeHtml(health.detail)}</p><dl>${Object.entries(health.capabilities).map(([key, value]) => `<div><dt>${key}</dt><dd>${value}</dd></div>`).join("")}</dl></article>`).join("") || '<p class="muted">No source health has been observed. Empty coverage is not proof that no sessions exist.</p>';
     element(document, "codex").textContent = snapshot.providers.some((health) => health.id === "Codex" && health.enabled) ? "Disable local Codex" : "Enable local Codex";
     for (const [id, checked] of [["hide-titles", preferences.hideTitles], ["show-ended", preferences.showEnded], ["vignettes", preferences.vignettes], ["dialogue", preferences.dialogue]]) {
@@ -298,9 +305,9 @@ export function drawOffice(document, state, selected = null, world = state.world
     }
     if (selected) {
         const agent = visible.find((item) => item.id === selected);
-        if (agent) drawDetails(element(document, "details"), agent, state);
+        if (agent) drawDetails(element(document, "details"), agent, state, world);
     }
-    decorateOffice(document, state, world, selected);
+    decorateOffice(document, state, world);
 }
 
 /** @param {Document} document @param {string} selector @param {string} key @param {string|null} id */
@@ -311,9 +318,9 @@ function focusMatch(document, selector, key, id) {
 }
 
 /** Render engine output strictly as labeled decoration, leaving factual controls/feed untouched.
- * @param {Document} document @param {OfficePageState} state @param {import("./world-types.js").WorldView|undefined} world @param {string|null} selected
+ * @param {Document} document @param {OfficePageState} state @param {import("./world-types.js").WorldView|undefined} world
  */
-function decorateOffice(document, state, world, selected) {
+function decorateOffice(document, state, world) {
     /** @type {Map<string, {node: HTMLElement, world: import("./world-types.js").WorldCluster}>} */
     const spaces = new Map();
     for (const cluster of document.querySelectorAll(".session-cluster[data-session]")) {
@@ -341,23 +348,29 @@ function decorateOffice(document, state, world, selected) {
     }
     /** @param {import("./world-types.js").PropKind} kind @returns {string} */
     function propSymbol(kind) { return kind === "web" ? "♧" : kind === "mug" ? "☕" : kind === "leaves" ? "❧" : "▤"; }
+    /** @param {import("./world-types.js").OfficeEffectKind} kind @returns {string} */
+    function quietEffectSymbol(kind) { return kind === "ghost" ? "✧" : kind === "spider" ? "♧" : kind === "screen-flicker" ? "✦" : "⌁"; }
     for (const cluster of document.querySelectorAll(".session-cluster[data-session]")) {
         if (!(cluster instanceof HTMLElement)) continue;
         const session = state.snapshot.sessions.find((item) => item.id === cluster.dataset.session);
         if (!session) continue;
         const projected = world?.clusters.find((item) => item.sessionId === session.id);
         cluster.hidden = projected ? !projected.visible : session.closed && !state.preferences.showEnded;
-        if (projected) cluster.classList.toggle("abandoned", projected.abandoned);
+        cluster.classList.toggle("abandoned", projected?.abandoned === true || session.closed && !state.snapshot.agents.some((agent) => agent.sessionId === session.id && !agent.ended));
+        cluster.classList.toggle("quiet-cluster", projected?.quiet === true);
+        const title = cluster.querySelector(".cluster-heading h3");
+        if (title) title.textContent = sessionTitle(session, state.preferences, world);
         const motifs = cluster.querySelector("[data-motifs]");
-        const values = session.closed ? [] : projected?.motifs ?? deriveMotifs(session.title);
-        if (motifs) motifs.innerHTML = values.length ? '<span class="motif-label">Fictional motifs</span>' + values.map((motif) => `<span class="motif">${escapeHtml(motif.symbol)} ${escapeHtml(motif.label)}</span>`).join("") : "";
+        const values = session.closed || projected?.quiet ? [] : projected?.motifs ?? deriveMotifs(session.title);
+        if (motifs) motifs.innerHTML = values.map((motif) => `<span class="motif">${escapeHtml(motif.symbol)} ${escapeHtml(motif.label)}</span>`).join("");
         cluster.querySelector(".abandoned-note")?.remove();
         const props = cluster.hidden ? [] : world?.props.filter((prop) => prop.spaceId === projected?.spaceId) ?? [];
         let propLayer = cluster.querySelector(".office-props");
         if (!propLayer && props.length) {
             propLayer = document.createElement("div");
             propLayer.className = "office-props";
-            propLayer.setAttribute("aria-label", "Persistent fictional office props");
+            propLayer.setAttribute("role", "group");
+            propLayer.setAttribute("aria-label", "Decorative office props");
             cluster.append(propLayer);
         }
         for (const node of propLayer?.querySelectorAll("[data-prop]") ?? []) {
@@ -372,7 +385,9 @@ function decorateOffice(document, state, world, selected) {
                 propLayer?.append(node);
             }
             if (!(node instanceof HTMLElement)) continue;
-            node.textContent = `${propSymbol(prop.kind)} ${prop.kind}${prop.cleanupSceneId ? " · picking up" : ""} · fiction`;
+            node.setAttribute("role", "img");
+            node.setAttribute("aria-label", `Fictional office prop: ${prop.kind}${prop.cleanupSceneId ? ", being picked up" : ""}`);
+            node.textContent = `${propSymbol(prop.kind)} ${prop.kind}${prop.cleanupSceneId ? " · picking up" : ""}`;
             node.classList.toggle("being-collected", Boolean(prop.cleanupSceneId));
             const point = project(prop.position, prop.spaceId);
             const bounds = cluster.getBoundingClientRect();
@@ -385,8 +400,36 @@ function decorateOffice(document, state, world, selected) {
         if (effect) {
             const node = document.createElement("p");
             node.className = "abandoned-note";
-            node.textContent = `♧ Office fiction · ${effect.label}`;
+            node.setAttribute("role", "img");
+            node.setAttribute("aria-label", `Fictional office effect: ${effect.kind}`);
+            node.textContent = `♧ ${effect.kind}`;
             cluster.append(node);
+        }
+        const quietEffects = projected?.quiet === true && !cluster.hidden
+            ? world?.quietEffects.filter((item) => item.clusterId === projected.id) ?? []
+            : [];
+        for (const node of cluster.querySelectorAll("[data-quiet-effect]")) {
+            if (node instanceof HTMLElement && !quietEffects.some((item) => item.id === node.dataset.quietEffect)) node.remove();
+        }
+        for (const quietEffect of quietEffects) {
+            let node = Array.from(cluster.querySelectorAll("[data-quiet-effect]"))
+                .find((item) => item instanceof HTMLElement && item.dataset.quietEffect === quietEffect.id);
+            if (!node) {
+                node = document.createElement("span");
+                node.className = "quiet-effect";
+                if (node instanceof HTMLElement) node.dataset.quietEffect = quietEffect.id;
+                cluster.append(node);
+            }
+            if (!(node instanceof HTMLElement)) continue;
+            node.setAttribute("role", "img");
+            node.setAttribute("aria-label", `Fictional quiet-office ambience: ${quietEffect.kind.replaceAll("-", " ")}`);
+            node.textContent = quietEffectSymbol(quietEffect.kind);
+            const point = project(quietEffect.position, quietEffect.spaceId);
+            const bounds = cluster.getBoundingClientRect();
+            if (point) {
+                node.style.left = `${point.x - bounds.left - cluster.clientLeft}px`;
+                node.style.top = `${point.y - bounds.top - cluster.clientTop}px`;
+            }
         }
     }
     for (const node of document.querySelectorAll("button.character")) {
@@ -396,19 +439,36 @@ function decorateOffice(document, state, world, selected) {
         node.classList.toggle("in-scene", Boolean(scene));
         node.dataset.pose = character?.pose ?? "neutral";
         node.querySelector(".scene-badge")?.remove();
-        node.querySelector(".dialogue-bubble")?.remove();
         if (scene) {
-            const label = document.createElement("span");
-            label.className = "scene-badge";
-            label.textContent = `Office fiction · ${scene.label}`;
-            node.append(label);
+            const sceneBadge = document.createElement("span");
+            const sceneLabel = scene.label.replace(/^office fiction\s*[·:—-]\s*/i, "");
+            sceneBadge.className = "scene-badge";
+            sceneBadge.setAttribute("role", "note");
+            sceneBadge.setAttribute("aria-label", `Fictional office scene: ${sceneLabel}`);
+            sceneBadge.textContent = sceneLabel;
+            node.append(sceneBadge);
         }
         const dialogue = world?.dialogue.find((item) => item.agentId === node.dataset.agent);
-        if (dialogue && state.preferences.dialogue) {
-            const bubble = document.createElement("span");
-            bubble.className = "dialogue-bubble";
-            bubble.innerHTML = `<small>Persona flavor · fiction</small>${escapeHtml(dialogue.text)}`;
-            node.append(bubble);
+        const oldBubble = node.querySelector(".dialogue-bubble");
+        if (!dialogue || !state.preferences.dialogue) oldBubble?.remove();
+        else {
+            /** @type {HTMLElement|null} */
+            let bubble = oldBubble instanceof HTMLElement ? oldBubble : null;
+            if (!bubble || bubble.dataset.dialogue !== dialogue.id) {
+                bubble?.remove();
+                bubble = document.createElement("span");
+                bubble.className = "dialogue-bubble";
+                bubble.setAttribute("role", "note");
+                bubble.dataset.dialogue = dialogue.id;
+                node.append(bubble);
+            }
+            const line = dialogue.text.replace(/\s+/g, " ").trim();
+            if (bubble.textContent !== line) bubble.textContent = line;
+            bubble.setAttribute("aria-label", `Fictional character dialogue: ${line}`);
+            const readingTime = Math.max(3_000, Math.min(8_000, dialogue.endsAt - dialogue.startedAt));
+            const elapsedTime = Math.max(0, Math.min(readingTime, (world?.now ?? dialogue.startedAt) - dialogue.startedAt));
+            bubble.style.setProperty("--dialogue-duration", `${readingTime}ms`);
+            bubble.style.setProperty("--dialogue-delay", `-${elapsedTime}ms`);
         }
         const person = node.querySelector(":scope > .pixel-person");
         if (!(person instanceof HTMLElement)) continue;
@@ -427,13 +487,7 @@ function decorateOffice(document, state, world, selected) {
         if (cleanup) person.dataset.carrying = propSymbol(cleanup.kind);
         else delete person.dataset.carrying;
     }
-    element(document, "ambience").innerHTML = world?.scenes.map((scene) => `<span class="fiction-note"><strong>OFFICE FICTION</strong> · ${escapeHtml(scene.label)}<br>Decorative scene, not reported work or collaboration.</span>`).join("") ?? "";
-    const detailFiction = document.getElementById("character-fiction");
-    if (detailFiction) {
-        const character = world?.characters.find((item) => item.agentId === selected);
-        const dialogue = world?.dialogue.find((item) => item.agentId === selected);
-        detailFiction.innerHTML = character ? `<p class="muted tiny">Fictional voice flavor: ${escapeHtml(character.voiceFlavor)}. Not a provider-reported personality or role.</p>${dialogue ? `<p class="fiction-note"><strong>PERSONA FLAVOR · FICTION</strong><br>${escapeHtml(dialogue.text)}</p>` : ""}` : "";
-    }
+    element(document, "ambience").replaceChildren();
 }
 
 /** @param {Document} document */
@@ -633,13 +687,13 @@ export function mountOffice(document) {
     let ambience = null;
     /** @type {ReturnType<typeof setInterval>|null} */
     let poll = null;
-    const resize = () => decorateOffice(document, state, currentWorld(), selected);
+    const resize = () => decorateOffice(document, state, currentWorld());
     function startTimers() {
         if (poll !== null) return;
         ambience = setInterval(() => {
             if (!stopped && !document.hidden && !state.world) {
                 localWorld?.tick();
-                decorateOffice(document, state, currentWorld(), selected);
+                decorateOffice(document, state, currentWorld());
             }
         }, 1_000);
         poll = setInterval(() => { if (!document.hidden) void refreshState(); }, 2_000);

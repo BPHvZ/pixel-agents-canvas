@@ -134,6 +134,94 @@ class OfficeBrowserTests(unittest.TestCase):
     def tearDown(self):
         self.page.close()
 
+    def test_visible_copy_is_factual_and_keeps_controls_available(self):
+        visible = self.page.locator("body").inner_text().casefold()
+        for phrase in ("read-only dashboard", "office decor & scenes are fiction", "fictional little office",
+                       "office fiction", "fictional idle scenes", "persona flavor", "not reported thoughts"):
+            self.assertNotIn(phrase, visible)
+        self.assertIn("local alias", visible)
+        self.assertIn("codex", visible)
+        self.assertIn("idle", visible)
+        self.assertIn("fresh · connected", visible)
+        self.assertNotIn("observed agent", visible)
+        self.assertTrue(self.page.locator("#show-ended").is_visible())
+        self.assertTrue(self.page.locator("#vignettes").is_visible())
+        self.assertTrue(self.page.locator("#dialogue").is_visible())
+        self.assertTrue(self.page.locator("#coverage").evaluate("element => !element.open"))
+
+    def test_quiet_scene_hides_title_and_motifs_without_hiding_provider_facts(self):
+        before = copy.deepcopy(self.state)
+        feed_before = self.page.locator("#feed").inner_text()
+        self.page.evaluate("""() => {
+            uiTest.view.clusters[0] = {...uiTest.view.clusters[0], dimmed:true, titleHidden:true, title:null, motifs:[]};
+            uiTest.view.quietEffects = [{id:'quiet-effect', clusterId:'cluster:session-0', spaceId:'space:0', kind:'ghost',
+                label:'Office fiction: A soft shadow', position:{x:20,y:30}, startedAt:1000, endsAt:5000, fictional:true}];
+            uiTest.drawOffice(document, uiTest.state, 'agent-0', uiTest.view);
+        }""")
+        cluster = self.page.locator(".session-cluster[data-session='session-0']")
+        self.assertIn("quiet scene", cluster.locator("h3").inner_text().casefold())
+        self.assertTrue(cluster.evaluate("element => element.classList.contains('quiet-cluster')"))
+        self.assertIn("codex session 01", cluster.get_attribute("aria-label").casefold())
+        self.assertIn("quiet scene", cluster.get_attribute("aria-label").casefold())
+        self.assertNotIn("Review frontend accessibility", cluster.get_attribute("aria-label"))
+        self.assertIn("quiet scene", self.page.locator(".roster-session").first.inner_text().casefold())
+        self.assertIn("quiet scene", self.page.locator(".detail-session").inner_text().casefold())
+        self.assertNotIn("Review frontend accessibility", cluster.inner_text())
+        self.assertEqual(cluster.locator(".motifs").inner_text(), "")
+        effect = cluster.locator(".quiet-effect")
+        self.assertEqual(effect.count(), 1)
+        self.assertIn("fictional", effect.get_attribute("aria-label").casefold())
+        self.assertNotIn("Session ended", cluster.inner_text())
+        self.assertIn("Codex", cluster.inner_text())
+        self.assertIn("Idle", cluster.inner_text())
+        self.assertIn("fresh · connected", cluster.inner_text().casefold())
+        self.assertEqual(self.page.locator("button.character[data-agent='agent-0'] > .status-chip").inner_text(), "○ Idle")
+        self.assertEqual(self.state, before)
+        self.assertEqual(self.page.locator("#feed").inner_text(), feed_before)
+
+    def test_parent_ended_visibility_preference_is_rendered_and_toggleable(self):
+        self.saved["snapshot"]["agents"].append({**self.saved["snapshot"]["agents"][0],
+            "id": "ended-agent", "name": "Ended", "ended": True, "endedAt": 1000})
+        self.saved["preferences"]["showEnded"] = True
+        with self.page.expect_response("**/state"):
+            self.page.evaluate("officeIntervals.get(2000)()")
+        self.page.wait_for_function("document.querySelector('button.character[data-agent=ended-agent]') !== null")
+        self.assertTrue(self.page.locator("#show-ended").is_checked())
+        with self.page.expect_response("**/preferences"):
+            self.page.locator("#show-ended").uncheck()
+        self.page.wait_for_function("document.querySelector('button.character[data-agent=ended-agent]') === null")
+
+    def test_dialogue_is_a_single_attached_accessible_read_time_bubble(self):
+        self.page.emulate_media(reduced_motion="no-preference")
+        self.page.evaluate("""() => {
+            const character = uiTest.view.characters[0];
+            uiTest.view.dialogue = [{id:'line-1', agentId:character.agentId, flavor:'calm',
+                label:'Line', text:'Taking a quiet moment.', startedAt:1000, endsAt:6500,
+                placement:'secondary', fictional:true}];
+            uiTest.drawOffice(document, uiTest.state, null, uiTest.view);
+            window.firstDialogueBubble = document.querySelector('.dialogue-bubble');
+        }""")
+        bubble = self.page.locator(".dialogue-bubble")
+        self.assertEqual(bubble.count(), 1)
+        self.assertEqual(bubble.inner_text(), "Taking a quiet moment.")
+        self.assertIn("fictional character dialogue", bubble.get_attribute("aria-label").casefold())
+        self.assertEqual(bubble.evaluate("element => element.closest('button.character')?.dataset.agent"), "agent-0")
+        self.assertEqual(bubble.evaluate("element => getComputedStyle(element).animationDuration"), "5.5s")
+        self.assertEqual(bubble.evaluate("element => getComputedStyle(element).position"), "absolute")
+        self.assertNotEqual(bubble.evaluate("element => getComputedStyle(element).borderRadius"), "0px")
+        self.assertNotEqual(bubble.evaluate("element => getComputedStyle(element).boxShadow"), "none")
+        self.assertNotEqual(bubble.evaluate("element => getComputedStyle(element, '::after').content"), "none")
+        self.assertTrue(self.page.locator("button.character[data-agent='agent-0'] > .status-chip").is_visible())
+        self.assertEqual(bubble.evaluate("element => element.textContent"), "Taking a quiet moment.")
+        self.page.evaluate("uiTest.drawOffice(document, uiTest.state, null, uiTest.view)")
+        self.assertTrue(self.page.evaluate("firstDialogueBubble === document.querySelector('.dialogue-bubble')"))
+        self.assertEqual(self.page.locator(".dialogue-bubble").count(), 1)
+        self.assertEqual(bubble.evaluate("element => getComputedStyle(element).animationName"), "dialogue-pop")
+        self.page.emulate_media(reduced_motion="reduce")
+        self.assertEqual(bubble.evaluate("element => getComputedStyle(element).animationName"), "none")
+        self.page.set_viewport_size({"width": 390, "height": 1100})
+        self.assertLessEqual(self.page.evaluate("document.documentElement.scrollWidth"), 390)
+
     def test_preference_patches_preserve_other_hosts_appearances(self):
         cached_b = dict(nickname="Cached B", palette="#112233", outfit="shirt", accessory="none", deskProp="book")
         self.saved["preferences"]["appearances"]["agent-1"] = cached_b
@@ -386,7 +474,7 @@ class OfficeBrowserTests(unittest.TestCase):
         with self.page.expect_response("**/state"):
             self.page.evaluate("officeIntervals.get(2000)()")
         self.page.wait_for_function("document.querySelectorAll('.roster-entry').length === 3")
-        self.assertIn("Session metadata unavailable", self.page.locator(".session-cluster").first.inner_text())
+        self.assertIn("Session unavailable", self.page.locator(".session-cluster").first.inner_text())
         self.assertEqual(self.page.locator(".session-cluster").last.get_attribute("data-session"), "ended-session")
         self.assertEqual(self.page.locator(".session-cluster").first.locator("button.character").get_attribute("data-agent"), "agent-0")
 

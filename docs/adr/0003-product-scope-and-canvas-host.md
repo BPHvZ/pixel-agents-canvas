@@ -11,7 +11,8 @@ The inspiration projects show distinct scope choices: `agent-virtual-office` emp
 
 ## Decision
 
-- The product is one installable canvas experience supported in VS Code and the GitHub Copilot App. Target a single artifact, but use host-specific packaging over reduced provider access if validation proves one packaging path cannot serve both. Same product intent does not promise identical host capabilities.
+- The product remains one canvas experience for VS Code and the GitHub Copilot App. Target a single artifact, but use host-specific packaging rather than reduced provider access if validation proves one packaging path cannot serve both; identical host capabilities are not promised. Only the GitHub Copilot App has a finalized installation path. VS Code Canvas support and instructions remain preview and may change.
+- The finalized Copilot App path is an initial import from the repository folder `.github/extensions/pixel-agents-canvas` on `main`. A compatible Gist URL is an optional import format, but the project does not maintain a Gist mirror. New imports use the latest merged code and may precede a tagged source release; source-release publication and its existing gates remain separate. Automatic updates, reinstallation behavior, and release-driven updates are unspecified.
 - Meaningful use must not require an active paid GitHub Copilot plan. GitHub account sign-in may still be a host requirement, and third-party model providers/BYOK/proxy routes may be used. Report host availability separately from Copilot-plan status.
 - Keep five facts distinct wherever known: host, harness/session activity source, model route, billing route, and discovery source. A Copilot CLI session using a proxy to an OpenAI/Codex model remains Copilot CLI-sourced activity; do not relabel it a Codex CLI session or imply GitHub model billing.
 - V1 is a useful read-only dashboard: session/agent identity when available, activity source and discovery source, lifecycle/waiting state, safe task summary, and freshness. Open/focus is offered only where a public route is verified; otherwise the UI states it is unavailable. No launching, steering, task assignment, or orchestration.
@@ -28,7 +29,7 @@ Phase 0 is approved to proceed to Phase 1. The user accepts normal host/workspac
 
 - Product messaging must distinguish a real provider connection from preview, unavailable, and disconnected states.
 - Control-plane features remain out of scope even though some inspiration projects offer them.
-- Installation and runtime instructions must be tested against the actual Copilot App SDK/host version. Any capability claims need a cited, version-appropriate source or reproducible verification.
+- Installation and runtime instructions must be tested against the actual Copilot App SDK/host version. Any capability claims need a cited, version-appropriate source or reproducible verification. GitHub's public docs do not specify Gist/Folder URL constraints or update behavior, so keep those details as an open host-acceptance gate and do not promise automatic updates.
 - If a paid GitHub Copilot plan is required for meaningful use despite a supported third-party model route, or the host prevents the local Codex path, the product requirement is unmet; escalate rather than conflating the plan requirement with GitHub sign-in.
 
 ## Alternatives considered

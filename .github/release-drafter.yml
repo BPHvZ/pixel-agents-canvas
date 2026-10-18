@@ -1,0 +1,24 @@
+name-template: 'v$RESOLVED_VERSION'
+tag-template: 'v$RESOLVED_VERSION'
+version-template: '$MAJOR.$MINOR.$PATCH$PRERELEASE'
+change-template: '- $TITLE (#$NUMBER) $AUTHORS'
+categories:
+  - title: 'Breaking Changes'
+    semver-increment: major
+    exclusive: true
+    when:
+      labels:
+        - 'release:major'
+  - title: 'Features'
+    semver-increment: minor
+    exclusive: true
+    when:
+      labels:
+        - 'release:minor'
+  - title: 'Other Changes'
+    semver-increment: patch
+    exclusive: true
+template: |
+  ## Changes
+
+  $CHANGES

@@ -6,7 +6,7 @@ export interface Motif { id: string; label: string; symbol: string }
 export type VoiceFlavor = "curious" | "dry-witted" | "earnest" | "calm" | "upbeat";
 export type CharacterPose = "rest" | "focused" | "wait" | "attention" | "issue" | "completion" | "neutral" | "vignette" | "cleanup" | "desk-setup";
 export type PropKind = "mug" | "leaves" | "paper" | "book" | "web";
-export type AbandonedEffectKind = "ghost" | "spider" | "screen-flicker" | "chair-movement";
+export type OfficeEffectKind = "ghost" | "spider" | "screen-flicker" | "chair-movement";
 
 export interface WorldCluster {
     id: string;
@@ -20,6 +20,8 @@ export interface WorldCluster {
     titleVisibilityNote: string;
     motifs: Motif[];
     abandoned: boolean;
+    /** Fictional non-active atmosphere; independent of explicit session closure. */
+    quiet: boolean;
     dimmed: boolean;
     endedAt: number | null;
     statusLabel: string;
@@ -41,6 +43,8 @@ export interface WorldCharacter {
     providerName: string | null;
     providerRole: string | null;
     state: AgentState;
+    ended: boolean;
+    endedAt: number | null;
     waitingReason: "approval" | "input" | null;
     freshness: Freshness;
     connected: boolean;
@@ -89,7 +93,18 @@ export interface AbandonedEffect {
     id: string;
     clusterId: string;
     spaceId: string;
-    kind: AbandonedEffectKind;
+    kind: OfficeEffectKind;
+    label: string;
+    position: Position;
+    startedAt: number;
+    endsAt: number;
+    fictional: true;
+}
+export interface WorldQuietEffect {
+    id: string;
+    clusterId: string;
+    spaceId: string;
+    kind: OfficeEffectKind;
     label: string;
     position: Position;
     startedAt: number;
@@ -107,6 +122,8 @@ export interface WorldView {
     scenes: WorldScene[];
     dialogue: WorldDialogue[];
     abandonedEffects: AbandonedEffect[];
+    /** Ambient fiction for quiet, non-abandoned clusters; never carries an end marker. */
+    quietEffects: WorldQuietEffect[];
 }
 export interface OfficeWorldOptions {
     /** Milliseconds; defaults to Date.now. update/tick advance time; view is observational. */

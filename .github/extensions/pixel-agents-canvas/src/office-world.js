@@ -10,24 +10,15 @@
 /** @type {VoiceFlavor[]} */
 const VOICES = ["curious", "dry-witted", "earnest", "calm", "upbeat"];
 const PALETTES = ["#5c8ed6", "#c77951", "#7a9e64", "#aa78bc", "#cc9f42", "#5baba3"];
-/** @type {Record<VoiceFlavor, string>} */
-const VOICE_LINES = {
-    curious: "Does the office fern have a favorite day?",
-    "dry-witted": "The paper stack has acquired another floor.",
-    earnest: "A little care makes an office feel like home.",
-    calm: "There is room for a quiet breath.",
-    upbeat: "A little sunshine for this corner!",
+/** @type {Record<VoiceFlavor, readonly string[]>} */
+const DIALOGUE_LINES = {
+    curious: ["Does the fern have a favorite day?", "I wonder where tiny clouds go.", "Could this mug tell a story?", "The window has a new shade."],
+    "dry-witted": ["That paper stack is gaining altitude.", "The chair has plans of its own.", "A serious meeting with a mug.", "The clock is winning again."],
+    earnest: ["A little care makes home.", "One small thing at a time.", "This corner feels brighter now.", "A kind pause can help."],
+    calm: ["There is room for a quiet breath.", "The light moves gently here.", "Let the afternoon take its time.", "A peaceful corner is enough."],
+    upbeat: ["A little sunshine for this corner!", "The office plants look splendid today!", "What a lovely day for a stretch!", "This desk has excellent company."],
 };
-/** @type {Record<OfficeAgent['state'], string>} */
-const STATE_LINES = {
-    idle: "A quiet moment among the desks.",
-    working: "A tiny desk lamp takes center stage.",
-    waiting: "A little pause beside the office clock.",
-    completed: "A paper star for the desk.",
-    failed: "The office plant is quietly keeping company.",
-    unknown: "The office clock ticks softly.",
-};
-/** @type {{kind: import('./world-types.js').AbandonedEffectKind, label: string}[]} */
+/** @type {{kind: import('./world-types.js').OfficeEffectKind, label: string}[]} */
 const HAUNTS = [
     { kind: "ghost", label: "A little office ghost drifts past" },
     { kind: "spider", label: "A tiny spider spins a web" },
@@ -43,6 +34,12 @@ const VIGNETTES = [
     { id: "reading", label: "Reading a little book" },
     { id: "antics", label: "Balancing a paper hat" },
     { id: "chat", label: "A friendly office chat" },
+];
+const OFF_DUTY_VIGNETTES = [
+    { id: "off-duty-stroll", label: "Taking a gentle stroll in the common area" },
+    { id: "off-duty-plants", label: "Enjoying a quiet stroll by the office plants" },
+    { id: "off-duty-window", label: "Taking a gentle walk to the sunny window" },
+    { id: "off-duty-books", label: "A quiet stroll past the common-area bookshelf" },
 ];
 
 /** @template T @param {readonly T[]} values @param {() => number} random */
@@ -158,24 +155,36 @@ export function createOfficeWorld({ clock = Date.now, random = Math.random } = {
     let providers = [];
     const unitRandom = () => { const value = random(); return Number.isFinite(value) ? Math.min(1 - Number.EPSILON, Math.max(0, value)) : 0; };
     const cadence = () => 10000 + Math.round(unitRandom() * 20000);
+    const dialogueCadence = () => 15000 + Math.round(unitRandom() * 15000);
     const nextVignette = shuffleCycle(VIGNETTES, unitRandom);
+    const nextOffDutyVignette = shuffleCycle(OFF_DUTY_VIGNETTES, unitRandom);
     const nextHaunt = shuffleCycle(HAUNTS, unitRandom);
+    const nextQuietEffect = shuffleCycle(HAUNTS, unitRandom);
     /** @type {number | null} */
     let nextHauntAt = null;
+    /** @type {number | null} */
+    let nextQuietEffectAt = null;
     let hauntOffset = 0;
+    let quietEffectOffset = 0;
     let spaces = 0;
     /** @type {import('./world-types.js').WorldProp[]} */
     let props = [];
     /** @type {import('./world-types.js').AbandonedEffect[]} */
     let effects = [];
+    /** @type {import('./world-types.js').WorldQuietEffect[]} */
+    let quietEffects = [];
     /** @type {Map<string, number>} */
     const completionUntil = new Map();
     /** @type {Map<string, number>} */
     const lastDialogueAt = new Map();
+    /** @type {Map<string, number>} */
+    const dialogueDueAt = new Map();
+    /** @type {Map<string, () => string | undefined>} */
+    const dialogueCycles = new Map();
     /** @type {import('./world-types.js').WorldDialogue[]} */
     let dialogue = [];
     /** @type {Preferences} */
-    let preferences = { hideTitles: false, hiddenSessionTitles: {}, showEnded: false, vignettes: true, dialogue: true, appearances: {} };
+    let preferences = { hideTitles: false, hiddenSessionTitles: {}, showEnded: true, vignettes: true, dialogue: true, appearances: {} };
     /** @type {Map<string, OfficeAgent>} */
     const agents = new Map();
     /** @type {Map<string, Cluster>} */
@@ -186,9 +195,59 @@ export function createOfficeWorld({ clock = Date.now, random = Math.random } = {
     function readClock() { const value = clock(); if (Number.isFinite(value)) now = Math.max(now, value); }
 
     /** @param {OfficeAgent} agent */
-    function eligible(agent) {
+    function sourceAvailable(agent) {
         const health = providers.find((provider) => provider.id === agent.provider);
-        return observed.has(agent.id) && !agent.ended && agent.state === "idle" && agent.freshness === "fresh" && agent.connected && clusters.get(agent.sessionId)?.session.closed === false && (!health || health.enabled && ["connected", "empty"].includes(health.availability));
+        return !health || health.enabled && ["connected", "empty"].includes(health.availability);
+    }
+
+    /** @param {Cluster} cluster */
+    function quietCluster(cluster) {
+        if (cluster.abandoned) return false;
+        return ![...agents.values()].some((agent) => agent.sessionId === cluster.session.id && observed.has(agent.id) && !agent.ended && agent.freshness === "fresh" && ["working", "waiting", "failed"].includes(agent.state));
+    }
+
+    /** @param {OfficeAgent} agent */
+    function dialogueVisible(agent) {
+        const cluster = clusters.get(agent.sessionId);
+        return preferences.dialogue && (observed.has(agent.id) || agent.ended) && (!agent.ended || preferences.showEnded) && Boolean(cluster && (!cluster.retired || agent.ended && preferences.showEnded));
+    }
+
+    /** @param {OfficeAgent} agent */
+    function speak(agent) {
+        const flavor = VOICES[hash(agent.id) % VOICES.length] ?? "calm";
+        const key = `${agent.id}:${agent.state}`;
+        let nextLine = dialogueCycles.get(key);
+        if (!nextLine) {
+            nextLine = shuffleCycle(DIALOGUE_LINES[flavor], unitRandom);
+            dialogueCycles.set(key, nextLine);
+        }
+        const text = nextLine();
+        if (!text) return;
+        const wordCount = text.trim().split(/\\s+/).length;
+        const duration = Math.max(3000, Math.min(8000, wordCount * 300));
+        dialogue.push({ id: `dialogue:${++sequence}`, agentId: agent.id, flavor, label: "Fictional character dialogue", text, startedAt: now, endsAt: now + duration, placement: "secondary", fictional: true });
+        lastDialogueAt.set(agent.id, now);
+        dialogueDueAt.set(agent.id, now + dialogueCadence());
+    }
+
+    /** @param {OfficeAgent} agent */
+    function eligible(agent) {
+        return observed.has(agent.id) && !agent.ended && agent.state === "idle" && agent.freshness === "fresh" && agent.connected && clusters.get(agent.sessionId)?.session.closed === false && sourceAvailable(agent);
+    }
+
+    /** @param {OfficeAgent} agent */
+    function groupEligible(agent) {
+        if (agent.ended) return preferences.showEnded && Boolean(clusters.get(agent.sessionId));
+        return eligible(agent);
+    }
+
+    /** @param {OfficeAgent} agent */
+    function soloEligible(agent) {
+        const cluster = clusters.get(agent.sessionId);
+        if (agent.ended) return preferences.showEnded && Boolean(cluster);
+        if (!observed.has(agent.id) || !cluster || cluster.retired || cluster.session.closed) return false;
+        if (agent.state === "idle" && agent.freshness === "fresh" && agent.connected && sourceAvailable(agent)) return true;
+        return agent.state === "unknown" || agent.freshness !== "fresh" || !agent.connected || !sourceAvailable(agent);
     }
 
     /** @param {number} space */
@@ -211,36 +270,68 @@ export function createOfficeWorld({ clock = Date.now, random = Math.random } = {
         scenes = scenes.filter((candidate) => candidate.id !== scene.id);
     }
 
+    /** @param {import('./world-types.js').WorldScene} scene */
+    function sceneIsValid(scene) {
+        if (!preferences.vignettes) return false;
+        return scene.participants.every((id) => {
+            const agent = agents.get(id);
+            if (!agent) return false;
+            if (scene.kind === "desk-setup") return observed.has(id) && !agent.ended && agent.connected && agent.freshness === "fresh" && !clusters.get(agent.sessionId)?.session.closed;
+            if (scene.kind === "cleanup") return eligible(agent);
+            return scene.participants.length > 1 ? groupEligible(agent) : soloEligible(agent);
+        });
+    }
+
     function advance() {
-        dialogue = dialogue.filter((bubble) => preferences.dialogue && bubble.endsAt > now && observed.has(bubble.agentId) && agents.has(bubble.agentId));
+        dialogue = dialogue.filter((bubble) => {
+            const agent = agents.get(bubble.agentId);
+            return Boolean(agent && bubble.endsAt > now && dialogueVisible(agent));
+        });
         for (const [id, until] of completionUntil) if (until <= now || !agents.has(id)) completionUntil.delete(id);
         for (const scene of [...scenes]) {
-            const valid = preferences.vignettes && scene.participants.every((id) => {
-                const agent = agents.get(id);
-                return agent !== undefined && (scene.kind === "desk-setup" ? observed.has(id) && agent.connected && agent.freshness === "fresh" && !clusters.get(agent.sessionId)?.session.closed : eligible(agent));
-            });
-            if (!valid) cancel(scene);
+            if (!sceneIsValid(scene)) cancel(scene);
             else if (scene.endsAt <= now) {
                 props = props.filter((prop) => prop.cleanupSceneId !== scene.id);
                 scenes = scenes.filter((candidate) => candidate.id !== scene.id);
             }
         }
-        const idle = [...agents.values()].filter(eligible);
-        if (!preferences.vignettes || !idle.length) nextVignetteAt = null;
+        const groupCandidates = [...agents.values()].filter(groupEligible);
+        const soloCandidates = [...agents.values()].filter(soloEligible);
+        const soloOnlyCandidates = soloCandidates.filter((agent) => !groupEligible(agent));
+        if (!preferences.vignettes || !soloCandidates.length) nextVignetteAt = null;
         else {
             if (nextVignetteAt === null) nextVignetteAt = now + cadence();
             if (now >= nextVignetteAt && !scenes.length) {
-                const template = nextVignette();
-                if (template) {
-                    const participants = Array.from({ length: Math.min(2, idle.length) }, (_, i) => idle[(participantOffset + i) % idle.length]?.id).filter((id) => id !== undefined);
-                    participantOffset = (participantOffset + 1) % idle.length;
-                    const target = template.id === "tidy" ? props.find((prop) => !prop.cleanupSceneId && [...clusters.values()].some((cluster) => `space:${cluster.space}` === prop.spaceId && !cluster.retired && (!cluster.abandoned || preferences.showEnded))) : undefined;
+                const chooseSoloOnly = soloOnlyCandidates.length > 0 && participantOffset % 2 === 1;
+                /** @type {string[]} */
+                let participants = [];
+                /** @type {{id: string, label: string} | undefined} */
+                let template;
+                if (chooseSoloOnly) {
+                    const solo = soloOnlyCandidates[Math.floor(participantOffset / 2) % soloOnlyCandidates.length];
+                    if (solo) participants = [solo.id];
+                } else if (groupCandidates.length > 1) {
+                    participants = Array.from({ length: Math.min(2, groupCandidates.length) }, (_, i) => groupCandidates[(participantOffset + i) % groupCandidates.length]?.id).filter((id) => id !== undefined);
+                } else if (groupCandidates.length === 1) {
+                    const only = groupCandidates[0];
+                    if (only) participants = [only.id];
+                } else {
+                    const solo = soloCandidates[participantOffset % soloCandidates.length];
+                    if (solo) participants = [solo.id];
+                }
+                const first = agents.get(participants[0] ?? "");
+                template = first?.ended && participants.length === 1 ? nextOffDutyVignette() : nextVignette();
+                participantOffset++;
+                if (template && participants.length) {
+                    const target = template.id === "tidy" && participants.every((id) => {
+                        const participant = agents.get(id);
+                        return Boolean(participant && eligible(participant));
+                    }) ? props.find((prop) => !prop.cleanupSceneId && [...clusters.values()].some((cluster) => `space:${cluster.space}` === prop.spaceId && !cluster.retired && (!cluster.abandoned || preferences.showEnded))) : undefined;
                     const scene = { id: `scene:${++sequence}`, templateId: template.id, kind: target ? "cleanup" : "vignette", label: `Office fiction: ${template.label}`, participants, startedAt: now, endsAt: now + 4000, fictional: true };
                     /** @type {import('./world-types.js').WorldScene} */
                     const staged = { ...scene, kind: target ? "cleanup" : "vignette", fictional: true };
                     scenes.push(staged);
                     if (target) target.cleanupSceneId = staged.id;
-                    const first = agents.get(participants[0] ?? "");
                     const cluster = clusters.get(first?.sessionId ?? "");
                     if (first && cluster) {
                         /** @type {Partial<Record<string, import('./world-types.js').PropKind>>} */
@@ -267,6 +358,39 @@ export function createOfficeWorld({ clock = Date.now, random = Math.random } = {
                 nextHauntAt = now + cadence();
             }
         }
+        const quietClusters = [...clusters.values()].filter((cluster) => quietCluster(cluster) && !cluster.retired);
+        quietEffects = quietEffects.filter((effect) => effect.endsAt > now && preferences.vignettes && quietClusters.some((cluster) => `cluster:${cluster.session.id}` === effect.clusterId));
+        if (!preferences.vignettes || !quietClusters.length) { nextQuietEffectAt = null; quietEffects = []; }
+        else {
+            if (nextQuietEffectAt === null) nextQuietEffectAt = now + cadence();
+            if (now >= nextQuietEffectAt && !quietEffects.length) {
+                const cluster = quietClusters[quietEffectOffset++ % quietClusters.length];
+                const ambience = nextQuietEffect();
+                if (cluster && ambience) {
+                    quietEffects.push({ id: `quiet:${++sequence}`, clusterId: `cluster:${cluster.session.id}`, spaceId: `space:${cluster.space}`, kind: ambience.kind, label: `Office fiction: ${ambience.label}`, position: origin(cluster.space), startedAt: now, endsAt: now + 4000, fictional: true });
+                    if (ambience.kind === "spider") leaveProp("web", cluster, null);
+                }
+                nextQuietEffectAt = now + cadence();
+            }
+        }
+        if (preferences.dialogue) {
+            for (const agent of agents.values()) {
+                if (!dialogueVisible(agent)) {
+                    dialogueDueAt.delete(agent.id);
+                    dialogue = dialogue.filter((bubble) => bubble.agentId !== agent.id);
+                    continue;
+                }
+                let dueAt = dialogueDueAt.get(agent.id);
+                if (dueAt === undefined) {
+                    dueAt = now + dialogueCadence();
+                    dialogueDueAt.set(agent.id, dueAt);
+                }
+                if (now < dueAt) continue;
+                const cooldownUntil = (lastDialogueAt.get(agent.id) ?? -Infinity) + 15000;
+                if (now < cooldownUntil) dialogueDueAt.set(agent.id, cooldownUntil);
+                else speak(agent);
+            }
+        }
     }
 
     function tick() { readClock(); advance(); }
@@ -274,34 +398,36 @@ export function createOfficeWorld({ clock = Date.now, random = Math.random } = {
     /** @param {import('./product-types.js').OfficeSnapshot} snapshot @param {Preferences} settings */
     function update(snapshot, settings) {
         readClock();
+        const dialogueWasEnabled = preferences.dialogue;
+        const previouslyObserved = observed;
         preferences = structuredClone(settings);
         providers = structuredClone(snapshot.providers);
         observed = new Set(snapshot.agents.map((agent) => agent.id));
-        const newcomers = snapshot.agents.filter((agent) => !agent.ended && !agents.has(agent.id));
+        if (preferences.dialogue && !dialogueWasEnabled) {
+            for (const agent of agents.values()) dialogueDueAt.set(agent.id, now + dialogueCadence());
+        }
+        const newcomers = snapshot.agents.filter((agent) => !agent.ended && (!agents.has(agent.id) || agents.get(agent.id)?.ended));
         for (const agent of snapshot.agents) {
             const previous = agents.get(agent.id);
-            const transition = previous && (previous.state !== agent.state || previous.waitingReason !== agent.waitingReason);
+            const transition = previous && (previous.state !== agent.state || previous.waitingReason !== agent.waitingReason || previous.freshness !== agent.freshness || previous.connected !== agent.connected || previous.ended !== agent.ended);
+            if (!previous || !previouslyObserved.has(agent.id)) dialogueDueAt.set(agent.id, now + dialogueCadence());
             if (transition) {
                 for (const scene of [...scenes]) if (scene.kind === "desk-setup" && scene.participants.includes(agent.id)) cancel(scene);
                 dialogue = dialogue.filter((bubble) => bubble.agentId !== agent.id);
-                if (preferences.dialogue && !agent.ended && agent.connected && agent.freshness === "fresh" && now - (lastDialogueAt.get(agent.id) ?? -Infinity) >= 15000) {
-                    const flavor = VOICES[hash(agent.id) % 5] ?? "calm";
-                    dialogue.push({ id: `dialogue:${++sequence}`, agentId: agent.id, flavor, label: `Persona flavor: ${flavor} (fiction)`, text: `${VOICE_LINES[flavor]} ${STATE_LINES[agent.state]}`, startedAt: now, endsAt: now + 4500, placement: "secondary", fictional: true });
-                    lastDialogueAt.set(agent.id, now);
-                }
+                const cooldownUntil = (lastDialogueAt.get(agent.id) ?? -Infinity) + 15000;
+                dialogueDueAt.set(agent.id, Math.max(now, cooldownUntil));
             }
             if (agent.state === "completed" && previous?.state !== "completed") completionUntil.set(agent.id, now + 2000);
             else if (agent.state !== "completed") completionUntil.delete(agent.id);
-            if (agent.ended) agents.delete(agent.id);
-            else agents.set(agent.id, { ...agent });
+            agents.set(agent.id, { ...agent });
         }
         for (const session of snapshot.sessions) {
             const existing = clusters.get(session.id);
             if (existing) existing.session = { ...session };
         }
         for (const cluster of clusters.values()) {
-            cluster.abandoned = cluster.session.closed && ![...agents.values()].some((agent) => agent.sessionId === cluster.session.id);
-            cluster.endedAt = cluster.session.closed ? cluster.session.endedAt ?? cluster.endedAt ?? now : null;
+            cluster.abandoned = cluster.session.closed && ![...agents.values()].some((agent) => agent.sessionId === cluster.session.id && !agent.ended);
+            cluster.endedAt = cluster.abandoned ? cluster.session.endedAt ?? cluster.endedAt ?? now : null;
         }
         /** @returns {number} */
         function claimSpace() {
@@ -312,8 +438,8 @@ export function createOfficeWorld({ clock = Date.now, random = Math.random } = {
         for (const session of snapshot.sessions) {
             const existing = clusters.get(session.id);
             if (!existing) {
-                const abandoned = session.closed && ![...agents.values()].some((agent) => agent.sessionId === session.id);
-                clusters.set(session.id, { session: { ...session }, space: abandoned ? spaces++ : claimSpace(), desks: new Map(), abandoned, retired: false, endedAt: session.closed ? session.endedAt ?? now : null });
+                const abandoned = session.closed && ![...agents.values()].some((agent) => agent.sessionId === session.id && !agent.ended);
+                clusters.set(session.id, { session: { ...session }, space: abandoned ? spaces++ : claimSpace(), desks: new Map(), abandoned, retired: false, endedAt: abandoned ? session.endedAt ?? now : null });
             } else if (!session.closed && existing.retired) {
                 existing.space = claimSpace();
                 existing.retired = false;
@@ -328,9 +454,7 @@ export function createOfficeWorld({ clock = Date.now, random = Math.random } = {
                 cluster.desks.set(agent.id, index);
             }
         }
-        for (const scene of [...scenes]) {
-            if (scene.participants.some((id) => !agents.has(id) || !observed.has(id))) cancel(scene);
-        }
+        for (const scene of [...scenes]) if (!sceneIsValid(scene)) cancel(scene);
         for (const agent of newcomers) {
             const cluster = clusters.get(agent.sessionId);
             const index = cluster?.desks.get(agent.id);
@@ -347,15 +471,17 @@ export function createOfficeWorld({ clock = Date.now, random = Math.random } = {
     /** @returns {WorldView} */
     function view() {
         /** @type {WorldView} */
-        const result = { now, fictionLabel: "Office fiction — not provider activity or collaboration", motion: { optional: true, reducedMotion: "static", flashing: false }, clusters: [], characters: [], props: [], scenes: [], dialogue: [], abandonedEffects: [] };
+        const result = { now, fictionLabel: "Office fiction — not provider activity or collaboration", motion: { optional: true, reducedMotion: "static", flashing: false }, clusters: [], characters: [], props: [], scenes: [], dialogue: [], abandonedEffects: [], quietEffects: [] };
         for (const cluster of clusters.values()) {
             const session = cluster.session;
             const position = { x: cluster.space % 3 * 400, y: Math.floor(cluster.space / 3) * 300 };
-            const titleHidden = preferences.hideTitles || preferences.hiddenSessionTitles[session.id] === true;
-            result.clusters.push({ id: `cluster:${session.id}`, sessionId: session.id, spaceId: `space:${cluster.space}`, position, provider: session.provider, title: titleHidden || session.closed ? null : session.title, titleHidden, titleVisibilityNote: "Hiding provider title text does not hide title-derived motifs.", motifs: session.closed ? [] : deriveMotifs(session.title), abandoned: cluster.abandoned, dimmed: cluster.abandoned, endedAt: cluster.endedAt, statusLabel: session.closed ? "Session ended" : "Session", visible: !cluster.retired && (!cluster.abandoned || preferences.showEnded) });
+            const quiet = quietCluster(cluster);
+            const titleHidden = preferences.hideTitles || preferences.hiddenSessionTitles[session.id] === true || quiet || session.closed;
+            const retainedEnded = preferences.showEnded && [...cluster.desks.keys()].some((id) => agents.get(id)?.ended === true);
+            result.clusters.push({ id: `cluster:${session.id}`, sessionId: session.id, spaceId: `space:${cluster.space}`, position, provider: session.provider, title: titleHidden ? null : session.title, titleHidden, titleVisibilityNote: quiet ? "Quiet cluster fiction temporarily hides the provider title and motifs." : "Hiding provider title text does not hide title-derived motifs.", motifs: quiet || session.closed ? [] : deriveMotifs(session.title), abandoned: cluster.abandoned, quiet, dimmed: cluster.abandoned || quiet, endedAt: cluster.endedAt, statusLabel: cluster.abandoned ? "Session ended" : "Session", visible: !cluster.retired || retainedEnded });
             for (const [id, deskIndex] of cluster.desks) {
                 const agent = agents.get(id);
-                if (!agent) continue;
+                if (!agent || agent.ended && !preferences.showEnded) continue;
                 const deskPosition = { x: position.x + 40 + deskIndex % 4 * 90, y: position.y + 80 + Math.floor(deskIndex / 4) * 90 };
                 const base = deterministicAppearance(id);
                 const override = preferences.appearances[id];
@@ -364,14 +490,16 @@ export function createOfficeWorld({ clock = Date.now, random = Math.random } = {
                 const host = clusters.get(agents.get(scene?.participants[0] ?? "")?.sessionId ?? "");
                 const sceneOrigin = host ? { x: host.space % 3 * 400, y: Math.floor(host.space / 3) * 300 } : position;
                 const cleaning = props.find((prop) => prop.cleanupSceneId === scene?.id);
-                const scenePosition = scene?.kind === "desk-setup" ? deskPosition : cleaning ? cleaning.position : { x: sceneOrigin.x + 160 + (scene?.participants.indexOf(id) ?? 0) * 30, y: sceneOrigin.y + 40 };
-                result.characters.push({ id, agentId: id, sessionId: agent.sessionId, clusterId: `cluster:${session.id}`, spaceId: `space:${cluster.space}`, deskId: `space:${cluster.space}:desk:${deskIndex}`, deskIndex, position: scene ? scenePosition : deskPosition, deskPosition, provider: agent.provider, providerName: agent.name, providerRole: agent.role, state: agent.state, waitingReason: agent.waitingReason, freshness: agent.freshness, connected: agent.connected, observed: observed.has(id), appearance, voiceFlavor: VOICES[hash(id) % 5] ?? "calm", pose: scene ? scene.kind === "vignette" ? "vignette" : scene.kind : !observed.has(id) ? "neutral" : agent.state === "completed" && agent.connected && agent.freshness === "fresh" && completionUntil.has(id) ? "completion" : factualPose(agent), statusLabel: agent.state === "waiting" && agent.waitingReason === "approval" ? "Waiting for approval" : agent.state, sceneId: scene?.id ?? null, sceneLabel: scene?.label ?? null });
+                const scenePosition = scene?.kind === "desk-setup" || agent.state === "working" && !agent.ended ? deskPosition : cleaning ? cleaning.position : { x: sceneOrigin.x + 160 + (scene?.participants.indexOf(id) ?? 0) * 30, y: sceneOrigin.y + 40 };
+                const commonPosition = { x: position.x + 160, y: position.y + 40 };
+                result.characters.push({ id, agentId: id, sessionId: agent.sessionId, clusterId: `cluster:${session.id}`, spaceId: `space:${cluster.space}`, deskId: `space:${cluster.space}:desk:${deskIndex}`, deskIndex, position: scene ? scenePosition : agent.ended ? commonPosition : deskPosition, deskPosition, provider: agent.provider, providerName: agent.name, providerRole: agent.role, state: agent.state, ended: agent.ended, endedAt: agent.endedAt, waitingReason: agent.waitingReason, freshness: agent.freshness, connected: agent.connected, observed: observed.has(id), appearance, voiceFlavor: VOICES[hash(id) % 5] ?? "calm", pose: scene ? scene.kind === "vignette" ? "vignette" : scene.kind : agent.ended ? "rest" : !observed.has(id) ? "neutral" : agent.state === "completed" && agent.connected && agent.freshness === "fresh" && completionUntil.has(id) ? "completion" : factualPose(agent), statusLabel: agent.ended ? "Ended" : agent.state === "waiting" && agent.waitingReason === "approval" ? "Waiting for approval" : agent.state, sceneId: scene?.id ?? null, sceneLabel: scene?.label ?? null });
             }
         }
         result.scenes = scenes;
         result.props = props;
         result.dialogue = dialogue;
         result.abandonedEffects = effects;
+        result.quietEffects = quietEffects;
         return structuredClone(result);
     }
     return { update, tick, view };

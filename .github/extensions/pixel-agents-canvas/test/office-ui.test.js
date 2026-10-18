@@ -26,6 +26,7 @@ function worldFixture() {
     view.scenes.push({ id: "scene", templateId: "tidy", kind: "cleanup", label: "Office fiction: Tidying", participants: ["agent"], startedAt: 900, endsAt: 2000, fictional: true });
     view.dialogue.push({ id: "dialogue", agentId: "agent", flavor: "calm", label: "Persona flavor", text: "Decorative dialogue", startedAt: 900, endsAt: 2000, placement: "secondary", fictional: true });
     view.abandonedEffects.push({ id: "effect", clusterId: "cluster:session", spaceId: "space:0", kind: "ghost", label: "Office fiction: Ghost", position: { x: 0, y: 0 }, startedAt: 900, endsAt: 2000, fictional: true });
+    view.quietEffects.push({ id: "quiet-effect", clusterId: "cluster:session", spaceId: "space:0", kind: "spider", label: "Office fiction: A tiny spider", position: { x: 20, y: 30 }, startedAt: 900, endsAt: 2000, fictional: true });
     return { ...state, world: view };
 }
 
@@ -44,7 +45,7 @@ test("browser rejects malformed supplied worlds instead of starting replacement 
         { world: { ...worldFixture().world, props: "invalid" } },
     ];
     for (const patch of cases) assert.throws(() => parseOfficeState({ ...worldFixture(), ...patch }), /Invalid office world/);
-    const collections = ["clusters", "characters", "props", "scenes", "dialogue", "abandonedEffects"];
+    const collections = ["clusters", "characters", "props", "scenes", "dialogue", "abandonedEffects", "quietEffects"];
     for (const collection of collections) {
         const state = worldFixture();
         state.world[collection].push(null);
@@ -60,6 +61,7 @@ test("browser rejects malformed supplied worlds instead of starting replacement 
         ["scenes", "participants", [null]], ["scenes", "kind", "invented"],
         ["dialogue", "placement", "primary"], ["dialogue", "text", {}],
         ["abandonedEffects", "kind", "rapid-flashing"], ["abandonedEffects", "endsAt", Infinity],
+        ["quietEffects", "kind", "invented"], ["quietEffects", "endsAt", Infinity],
     ]) {
         const state = worldFixture();
         state.world[collection][0][key] = invalid;
@@ -102,4 +104,20 @@ test("parser discards invalid entities and validates CSS without losing provider
     assert.equal(state.snapshot.agents[1].freshness, "unknown");
     assert.match(state.preferences.appearances.agent.palette, /^#[0-9a-f]{6}$/i);
     assert.equal(state.snapshot.agents[0].lastTurnOutcome, "interrupted");
+});
+
+test("ended visibility defaults on but explicit user preference is preserved", () => {
+    assert.equal(parsePreferences({}).showEnded, true);
+    assert.equal(parsePreferences({ showEnded: false }).showEnded, false);
+    assert.equal(parsePreferences({ showEnded: true }).showEnded, true);
+});
+
+test("renderer keeps product and fiction explanations out of visible copy", () => {
+    const html = renderHtml({ instanceId: "copy-regression", state: pageFixture() });
+    for (const phrase of [
+        "Read-only dashboard", "Office decor &amp; scenes are fiction", "A fictional little office",
+        "A little space for big ideas", "Facts, not office fiction", "Real signals. A fictional little office.",
+    ]) assert.equal(html.includes(phrase), false, phrase);
+    assert.match(html, /<details id="coverage"/);
+    assert.match(html, /id="show-ended"/);
 });

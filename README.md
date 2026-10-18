@@ -2,9 +2,15 @@
 
 A pixel-art office canvas for activity from the Copilot session hosting the extension and, after explicit opt-in, existing Codex CLI threads discovered through the local app-server.
 
-## Install and open
+## GitHub Copilot App installation
 
-Use a desktop Copilot host that supports project canvas extensions (VS Code with Canvases enabled, or GitHub Copilot App). Open this checkout as a trusted project, enable project extensions, reload them using the host's supported reload operation (or restart its session), then ask the agent to open **Pixel Agents Office**. The canvas ID is `pixel-agents-canvas`; no canvas deep link or VSIX package is supplied.
+In the GitHub Copilot App, use its installation-by-URL flow with the canonical [GitHub Folder URL](https://github.com/BPHvZ/pixel-agents-canvas/tree/main/.github/extensions/pixel-agents-canvas), which targets the canvas on `main`. A compatible Gist URL is an optional import format, but the project does not maintain a Gist mirror.
+
+New imports from `main` use the latest merged code, which may not yet be part of a published source release. These instructions cover initial installation only: automatic updates, reinstallation behavior, and updates tied to source releases are unspecified. See the [release guide](docs/releasing.md) for the separate tagged source-release process.
+
+## VS Code preview
+
+VS Code Canvas support is a preview and may change. For the preview checkout workflow, open this checkout as a trusted project, enable project extensions, reload them using the host's supported reload operation (or restart its session), then ask the agent to open **Pixel Agents Office**. This is not a finalized installation path. The canvas ID is `pixel-agents-canvas`; no VSIX package is supplied.
 
 The runtime resolves the SDK for `.github/extensions/pixel-agents-canvas/extension.mjs`; users do not install an SDK package or run a separate dashboard server. A paid GitHub Copilot subscription is not a product prerequisite: the hosting Copilot harness can use the user's supported custom model route. A host may still require GitHub sign-in. The harness/activity source remains distinct from model vendor and billing route.
 
@@ -56,6 +62,8 @@ python .github/extensions/pixel-agents-canvas/test/office-ui.browser.py
 ```
 
 Tests use synthetic metadata and temporary loopback servers, and clean up owned helpers. They never start a model turn or read real transcript content. New behavior must follow its accepted ADR and update the plan and progress tracker after each slice.
+
+See [the release guide](docs/releasing.md) for how main-branch merges create a rolling GitHub source-release draft. Publishing a GitHub release does not make the canvas installable through a marketplace.
 
 ## AI-assisted development
 
