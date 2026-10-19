@@ -97,7 +97,7 @@ Every feature and work item must be supported by an accepted ADR before implemen
 
 ### Phase 5 — Distribution and release verification
 - Verify GitHub Copilot App installation from the canonical project-folder URL on `main` and a compatible Gist URL, plus provider combinations (Copilot only, Codex only, both, neither), no Copilot entitlement, no-session/unsupported/offline states, open/focus, and practical scale. Keep VS Code installation and lifecycle checks as preview acceptance, not as finalized distribution support.
-- Document installation, consent, data boundaries, provider-specific coverage, limitations, and troubleshooting. App URL instructions cover initial imports only; update behavior is unspecified. Publish tagged source releases only with product behavior aligned with labels; preview remains off by default and visibly separate.
+- Document installation, consent, data boundaries, provider-specific coverage, limitations, and troubleshooting. App URL instructions cover initial imports only; update behavior is unspecified. Use the documented GitFlow-inspired `develop` → `main` promotion path for rolling source releases (not full GitFlow; no release branches); keep preview off by default and visibly separate.
 
 ## Decisions already made
 
