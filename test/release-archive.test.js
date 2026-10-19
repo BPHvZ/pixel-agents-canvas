@@ -9,7 +9,7 @@ test('Git source archives omit the complete local office demo and retain product
         return;
     }
 
-    const archive = spawnSync('git', ['archive', '--worktree-attributes', '--format=tar', 'HEAD'], { encoding: null });
+    const archive = spawnSync('git', ['archive', '--worktree-attributes', '--format=tar', 'HEAD'], { encoding: null, maxBuffer: 8 * 1024 * 1024 });
     assert.equal(archive.error, undefined, archive.stderr?.toString());
     assert.equal(archive.status, 0, archive.stderr?.toString());
     const listing = spawnSync('tar', ['-tf', '-'], { input: archive.stdout, encoding: 'utf8' });

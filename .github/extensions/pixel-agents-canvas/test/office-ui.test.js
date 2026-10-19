@@ -22,17 +22,27 @@ function worldFixture() {
     const world = createOfficeWorld({ clock: () => 1000 });
     world.update(state.snapshot, state.preferences);
     const view = world.view();
-    view.props.push({ id: "prop", spaceId: "space:0", deskIndex: 0, kind: "paper", position: { x: 40, y: 80 }, createdAt: 900, cleanupSceneId: "scene", fictional: true });
-    view.scenes.push({ id: "scene", templateId: "tidy", kind: "cleanup", label: "Office fiction: Tidying", participants: ["agent"], startedAt: 900, endsAt: 2000, fictional: true });
+    view.actors = [];
+    view.props.push({ id: "prop", spaceId: "space:0", deskIndex: 0, kind: "paper", position: { x: 40, y: 80 }, location: { kind: "desk", spaceId: "space:0", deskIndex: 0, position: { x: 40, y: 80 } }, createdAt: 900, cleanupSceneId: "scene", fictional: true });
+    view.props.push({ id: "zone-prop", kind: "mug", location: { kind: "zone", zoneId: "common-table", slot: 0 }, createdAt: 900, cleanupSceneId: null, fictional: true });
+    view.scenes.push({ id: "scene", templateId: "tidy", kind: "cleanup", label: "Office fiction: Tidying", participants: ["agent"], route: [{ kind: "zone", zoneId: "common-table" }], phase: "walking", startedAt: 900, endsAt: 2000, fictional: true });
+    view.actors.push({ id: "spider", kind: "spider", spaceId: "space:0", position: { x: 60, y: 70 }, route: [{ x: 80, y: 70 }], startedAt: 900, endsAt: 2000, fictional: true });
+    view.actors.push({ id: "ghost", kind: "ghost", clusterId: "cluster:session", spaceId: "space:0", position: { x: 100, y: 230 }, route: [{ x: 100, y: 230 }, { x: 200, y: 230 }], startedAt: 900, endsAt: 2000, fictional: true });
     view.dialogue.push({ id: "dialogue", agentId: "agent", flavor: "calm", label: "Persona flavor", text: "Decorative dialogue", startedAt: 900, endsAt: 2000, placement: "secondary", fictional: true });
     view.abandonedEffects.push({ id: "effect", clusterId: "cluster:session", spaceId: "space:0", kind: "ghost", label: "Office fiction: Ghost", position: { x: 0, y: 0 }, startedAt: 900, endsAt: 2000, fictional: true });
     view.quietEffects.push({ id: "quiet-effect", clusterId: "cluster:session", spaceId: "space:0", kind: "spider", label: "Office fiction: A tiny spider", position: { x: 20, y: 30 }, startedAt: 900, endsAt: 2000, fictional: true });
     return { ...state, world: view };
 }
 
-test("browser preserves the optional authoritative world read-model", () => {
+test("browser preserves semantic world routes, actors, and shared-zone props", () => {
     const state = worldFixture();
     assert.deepEqual(parseOfficeState(state), state);
+    for (const zoneId of ["common-table", "coffee-station", "plant-corner", "bookshelf", "window"]) {
+        const zoneState = worldFixture();
+        zoneState.world.props[1].location.zoneId = zoneId;
+        zoneState.world.scenes[0].route[0].zoneId = zoneId;
+        assert.deepEqual(parseOfficeState(zoneState), zoneState, zoneId);
+    }
     assert.equal("world" in parseOfficeState(pageFixture()), false);
 });
 
@@ -45,7 +55,7 @@ test("browser rejects malformed supplied worlds instead of starting replacement 
         { world: { ...worldFixture().world, props: "invalid" } },
     ];
     for (const patch of cases) assert.throws(() => parseOfficeState({ ...worldFixture(), ...patch }), /Invalid office world/);
-    const collections = ["clusters", "characters", "props", "scenes", "dialogue", "abandonedEffects", "quietEffects"];
+    const collections = ["clusters", "characters", "props", "scenes", "dialogue", "abandonedEffects", "quietEffects", "actors"];
     for (const collection of collections) {
         const state = worldFixture();
         state.world[collection].push(null);
@@ -57,8 +67,9 @@ test("browser rejects malformed supplied worlds instead of starting replacement 
         ["characters", "appearance", { nickname: "Name", palette: "red; background:url(external)", outfit: "shirt", accessory: "none", deskProp: "none" }],
         ["characters", "state", "invented"], ["characters", "deskIndex", -1],
         ["characters", "pose", "invented"], ["characters", "voiceFlavor", "invented"],
-        ["props", "kind", "invented"], ["props", "fictional", false],
-        ["scenes", "participants", [null]], ["scenes", "kind", "invented"],
+        ["props", "kind", "invented"], ["props", "fictional", false], ["props", "location", { kind: "zone", zoneId: "unknown", slot: -1 }],
+        ["scenes", "participants", [null]], ["scenes", "kind", "invented"], ["scenes", "phase", "teleporting"], ["scenes", "route", [{ kind: "zone", zoneId: "unknown" }]],
+        ["actors", "kind", "ghost"], ["actors", "route", [{ x: Infinity, y: 0 }]],
         ["dialogue", "placement", "primary"], ["dialogue", "text", {}],
         ["abandonedEffects", "kind", "rapid-flashing"], ["abandonedEffects", "endsAt", Infinity],
         ["quietEffects", "kind", "invented"], ["quietEffects", "endsAt", Infinity],
@@ -81,13 +92,18 @@ test("rich factual fields survive the unknown JSON boundary unchanged", () => {
     assert.throws(() => parseOfficeState({ snapshot: { agents: [] } }), /Invalid office state/);
 });
 
-test("renderer uses JSON-only state and external same-origin module and stylesheet", () => {
+test("renderer uses JSON-only state, external assets, and stable instance-seeded layout", () => {
     const fixture = pageFixture();
     fixture.snapshot.sessions[0].title = '</script><img src=x onerror="alert(1)">';
     const html = renderHtml({ instanceId: 'panel"<hostile>', state: fixture });
     assert.ok(html.includes('id="office-state" type="application/json"'));
     assert.ok(html.includes('type="module" src="/office-client.js"'));
     assert.ok(html.includes('href="/office.css"'));
+    assert.ok(html.includes('/assets/common-table.svg'));
+    assert.ok(html.includes('/assets/coffee-station.svg'));
+    const layout = html.match(/class="office-floor (layout-\d)"/)?.[1];
+    assert.ok(layout);
+    assert.ok(renderHtml({ instanceId: 'panel"<hostile>', state: fixture }).includes(`class="office-floor ${layout}"`));
     assert.equal(html.includes('<style>'), false);
     assert.equal(html.includes('<img src=x'), false);
     assert.equal(/<[^>]+\son\w+=/.test(html), false);

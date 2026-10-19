@@ -36,7 +36,7 @@ export interface WorldCharacter {
     spaceId: string;
     deskId: string;
     deskIndex: number;
-    /** Absolute world coordinates; these final positions need no animation. */
+    /** Absolute static/home anchor; semantic scene routes control temporary travel. */
     position: Position;
     deskPosition: Position;
     provider: ProviderName;
@@ -57,23 +57,54 @@ export interface WorldCharacter {
     sceneId: string | null;
     sceneLabel: string | null;
 }
+export type WorldPropLocation =
+    | { kind: "desk"; spaceId: string; deskIndex: number | null; position: Position }
+    | { kind: "zone"; zoneId: OfficeZoneId; slot: number };
 export interface WorldProp {
     id: string;
-    /** Props belong to physical space, not a returning/new session's context. */
-    spaceId: string;
-    deskIndex: number | null;
+    location: WorldPropLocation;
     kind: PropKind;
-    position: Position;
     createdAt: number;
     cleanupSceneId: string | null;
     fictional: true;
 }
+export type OfficeZoneId = "common-table" | "coffee-station" | "plant-corner" | "bookshelf" | "window";
+export type WorldWaypoint =
+    | { kind: "zone"; zoneId: OfficeZoneId }
+    | { kind: "desk"; agentId: string };
 export interface WorldScene {
     id: string;
     templateId: string;
     kind: "vignette" | "cleanup" | "desk-setup";
     label: string;
     participants: string[];
+    /** Intermediate global zones/desk destinations; each character starts and returns to its own desk. */
+    route: WorldWaypoint[];
+    phase: "walking" | "acting" | "returning";
+    startedAt: number;
+    endsAt: number;
+    fictional: true;
+}
+export type WorldActor = SpiderActor | GhostActor;
+export interface SpiderActor {
+    id: string;
+    kind: "spider";
+    spaceId: string;
+    position: Position;
+    /** Complete absolute path in the actor's physical space, including start and end. */
+    route: Position[];
+    startedAt: number;
+    endsAt: number;
+    fictional: true;
+}
+export interface GhostActor {
+    id: string;
+    kind: "ghost";
+    clusterId: string;
+    spaceId: string;
+    position: Position;
+    /** Complete deterministic room-local loop, including start and end. */
+    route: Position[];
     startedAt: number;
     endsAt: number;
     fictional: true;
@@ -120,6 +151,8 @@ export interface WorldView {
     characters: WorldCharacter[];
     props: WorldProp[];
     scenes: WorldScene[];
+    /** Independent fictional actors; scene routes contain shared waypoints only. */
+    actors: WorldActor[];
     dialogue: WorldDialogue[];
     abandonedEffects: AbandonedEffect[];
     /** Ambient fiction for quiet, non-abandoned clusters; never carries an end marker. */

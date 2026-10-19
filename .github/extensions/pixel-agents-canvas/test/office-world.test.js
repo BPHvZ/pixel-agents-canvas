@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { createOfficeWorld, deterministicAppearance, deriveMotifs } from "../src/office-world.js";
+import { createOfficeWorld, deterministicAppearance, deriveMotifs, ROUTE_TRAVEL_DURATION_MS } from "../src/office-world.js";
 import { createOfficeState } from "../src/office-state.js";
 
 /** @returns {import('../src/product-types.js').OfficeSession} */
@@ -58,24 +58,33 @@ test("idle characters share fictional cross-session scenes on a 10–30 second n
     h.at(9999);
     assert.equal(h.world.view().scenes.length, 0);
     const cycle = [];
-    for (let i = 1; i <= 16; i++) {
-        h.at(i * 10000);
-        const view = h.world.view();
-        const scene = view.scenes[0];
-        assert.ok(scene, "eligible agents start a scene without a model turn");
-        assert.equal(scene.fictional, true);
-        assert.deepEqual(scene.participants.slice().sort(), ["a1", "a2"]);
-        assert.match(view.fictionLabel, /not provider activity or collaboration/);
-        const busy = view.characters.find((character) => character.id === "busy");
-        assert.equal(busy.pose, "focused");
-        assert.deepEqual(busy.position, busy.deskPosition);
-        cycle.push(scene.templateId);
-        h.at(i * 10000 + 4000);
-        assert.equal(h.world.view().scenes.length, 0);
+    let time = 0;
+    for (let i = 0; i < 60 && cycle.length < 18; i++) {
+        time += 10000;
+        h.at(time);
+        let scene = h.world.view().scenes[0];
+        let guard = 0;
+        while (scene && guard++ < 10) {
+            const view = h.world.view();
+            assert.equal(scene.fictional, true);
+            if (scene.templateId === "spider-web") assert.deepEqual(scene.participants, []);
+            else if (scene.kind === "vignette" && ["coffee", "tea"].includes(scene.templateId)) assert.equal(scene.participants.length, 1);
+            else if (scene.kind === "vignette") assert.deepEqual(scene.participants.slice().sort(), ["a1", "a2"]);
+            assert.match(view.fictionLabel, /not provider activity or collaboration/);
+            const busy = view.characters.find((character) => character.id === "busy");
+            assert.equal(busy.pose, "focused");
+            assert.deepEqual(busy.position, busy.deskPosition);
+            assert.ok(["walking", "acting", "returning"].includes(scene.phase));
+            if (scene.templateId !== "cleanup-web" && scene.templateId !== "desk-setup") cycle.push(scene.templateId);
+            time = scene.endsAt;
+            h.at(time);
+            scene = h.world.view().scenes[0];
+        }
     }
-    assert.equal(new Set(cycle.slice(0, 8)).size, 8);
-    assert.equal(new Set(cycle.slice(8)).size, 8);
-    assert.notEqual(cycle[7], cycle[8]);
+    assert.equal(cycle.length, 18);
+    assert.equal(new Set(cycle.slice(0, 9)).size, 9);
+    assert.equal(new Set(cycle.slice(9)).size, 9);
+    assert.notEqual(cycle[8], cycle[9]);
     assert.deepEqual(facts, before);
     const slow = harness(() => 1);
     slow.world.update(snapshot(), preferences());
@@ -85,14 +94,57 @@ test("idle characters share fictional cross-session scenes on a 10–30 second n
     assert.equal(slow.world.view().scenes.length, 1);
 });
 
+test("coffee is single-user and common-table scenes use at most four stable seats", () => {
+    const h = harness();
+    const agents = Array.from({ length: 6 }, (_, index) => agent(`seat-${index}`, `seat-session-${index}`));
+    const sessions = agents.map((item) => session(item.sessionId));
+    const facts = snapshot(agents, sessions);
+    const before = structuredClone(facts);
+    h.world.update(facts, preferences());
+    let foundCoffee = false;
+    let foundTableGroup = false;
+    let time = 0;
+    for (let attempt = 0; attempt < 80 && !(foundCoffee && foundTableGroup); attempt++) {
+        time += 10000;
+        h.at(time);
+        const scene = h.world.view().scenes[0];
+        if (!scene) continue;
+        if (scene.templateId === "coffee" || scene.templateId === "tea") {
+            assert.equal(scene.participants.length, 1, `${scene.templateId} station is single-user`);
+            foundCoffee = true;
+        }
+        if (["reading", "chat", "stretch", "off-duty-stroll"].includes(scene.templateId)) {
+            assert.ok(scene.participants.length <= 4, "the common table has four fixed seats");
+            assert.equal(scene.participants.length, 4, "available idle participants fill the stable table seats");
+            assert.deepEqual(scene.participants, [...scene.participants].sort(), "seat order is deterministic by participant identity");
+            foundTableGroup = true;
+        }
+        time = scene.endsAt;
+        h.at(time);
+    }
+    assert.equal(foundCoffee, true, "the authored cycle eventually visits the single-user station");
+    assert.equal(foundTableGroup, true, "the authored cycle eventually fills the shared table");
+    assert.deepEqual(facts, before);
+});
+
 test("real work or incompatible participant facts immediately dismiss the entire scene and return desks", () => {
     for (const change of [{ state: "working" }, { state: "waiting", waitingReason: "approval" }, { state: "failed" }, { state: "unknown" }, { freshness: "stale" }, { connected: false }]) {
         const h = harness();
         h.world.update(snapshot([agent(), agent("a2", "s2")], [session(), session("s2")]), preferences());
-        h.at(10000);
-        assert.equal(h.world.view().scenes.length, 1);
-        h.world.update(snapshot([agent("a1", "s1", change), agent("a2", "s2")], [session(), session("s2")]), preferences());
-        assert.equal(h.world.view().scenes.length, 0);
+        let time = 10000;
+        let current = undefined;
+        for (let attempt = 0; attempt < 20; attempt++) {
+            h.at(time);
+            current = h.world.view().scenes[0];
+            if (current && current.participants.length > 1) break;
+            time = current ? current.endsAt + 10000 : time + 10000;
+        }
+        assert.ok(current && current.participants.length > 1, "test starts with a shared multi-agent scene");
+        const originalSceneId = current.id;
+        const participants = current.participants;
+        const changed = [agent("a1", "s1", participants.length === 0 || participants.includes("a1") ? change : {}), agent("a2", "s2", participants.length === 0 || participants.includes("a2") ? change : {})];
+        h.world.update(snapshot(changed, [session(), session("s2")]), preferences());
+        assert.equal(h.world.view().scenes.some((scene) => scene.id === originalSceneId), false, `the incompatible scene is dismissed immediately: ${JSON.stringify(change)} ${JSON.stringify(participants)}`);
         for (const character of h.world.view().characters) assert.deepEqual(character.position, character.deskPosition);
     }
 });
@@ -128,41 +180,163 @@ test("unknown, stale and disconnected agents get solo fiction while active work 
     assert.equal(h.world.view().scenes.length, 0);
 });
 
-test("props persist across facts and interruptions, and an idle agent can visibly clean another cluster", () => {
+test("coffee travel returns with a persistent desk mug after a visible station stop", () => {
+    assert.equal(ROUTE_TRAVEL_DURATION_MS, 2000);
+    const h = harness();
+    const facts = snapshot();
+    const before = structuredClone(facts);
+    h.world.update(facts, preferences());
+    let coffee;
+    for (let time = 10000; time <= 240000; time += 10000) {
+        h.at(time);
+        coffee = h.world.view().scenes.find((scene) => scene.templateId === "coffee");
+        if (coffee) break;
+        const current = h.world.view().scenes[0];
+        if (current) h.at(current.endsAt);
+    }
+    assert.ok(coffee, "the nonrepeating cycle includes a coffee visit");
+    assert.deepEqual(coffee.route, [{ kind: "zone", zoneId: "coffee-station" }]);
+    assert.equal(coffee.phase, "walking");
+    assert.equal(h.world.view().props.some((prop) => prop.kind === "mug"), false, "the mug is carried, not left at the station");
+    h.at(coffee.startedAt + 2000);
+    assert.equal(h.world.view().scenes.find((scene) => scene.id === coffee.id).phase, "acting");
+    h.at(coffee.endsAt - 1);
+    assert.equal(h.world.view().scenes.find((scene) => scene.id === coffee.id).phase, "returning");
+    h.at(coffee.endsAt);
+    const prop = h.world.view().props.find((item) => item.kind === "mug");
+    assert.ok(prop, "coffee leaves a mug after the character returns");
+    assert.equal(prop.location.kind, "desk");
+    assert.equal(prop.location.deskIndex, coffee.participants.length ? h.world.view().characters.find((character) => character.id === coffee.participants[0]).deskIndex : 0);
+    assert.deepEqual(facts, before, "fiction never mutates factual activity");
+
+});
+
+test("reading uses the shared common table and leaves a zoned book prop", () => {
+    const h = harness();
+    const facts = snapshot();
+    const before = structuredClone(facts);
+    h.world.update(facts, preferences());
+    let reading;
+    let time = 0;
+    for (let attempt = 0; attempt < 20 && !reading; attempt++) {
+        time += 10000;
+        h.at(time);
+        reading = h.world.view().scenes.find((scene) => scene.templateId === "reading");
+        const current = h.world.view().scenes[0];
+        if (!reading && current) { time = current.endsAt; h.at(time); }
+    }
+    assert.ok(reading);
+    assert.deepEqual(reading.route, [{ kind: "zone", zoneId: "common-table" }]);
+    assert.equal(h.world.view().props.some((prop) => prop.kind === "book"), false, "the book remains in use until the character returns");
+    h.at(reading.endsAt);
+    const book = h.world.view().props.find((prop) => prop.kind === "book");
+    assert.ok(book);
+    assert.deepEqual(book.location, { kind: "zone", zoneId: "common-table", slot: 0 });
+    assert.deepEqual(facts, before);
+});
+
+test("plant care visits the plant corner and leaves a global foliage prop", () => {
+    const h = harness();
+    h.world.update(snapshot(), preferences());
+    let plant;
+    let time = 0;
+    for (let attempt = 0; attempt < 20 && !plant; attempt++) {
+        time += 10000;
+        h.at(time);
+        plant = h.world.view().scenes.find((scene) => scene.templateId === "plant");
+        const current = h.world.view().scenes[0];
+        if (!plant && current) { time = current.endsAt; h.at(time); }
+    }
+    assert.ok(plant);
+    assert.deepEqual(plant.route, [{ kind: "zone", zoneId: "plant-corner" }]);
+    h.at(plant.endsAt);
+    assert.ok(h.world.view().props.some((prop) => prop.kind === "leaves" && prop.location.kind === "zone" && prop.location.zoneId === "plant-corner"));
+});
+
+test("paper-hat scene changes presentation temporarily without mutating saved appearance", () => {
+    const h = harness();
+    h.world.update(snapshot(), preferences());
+    let hat;
+    let time = 0;
+    for (let attempt = 0; attempt < 20 && !hat; attempt++) {
+        time += 10000;
+        h.at(time);
+        hat = h.world.view().scenes.find((scene) => scene.templateId === "paper-hat");
+        const current = h.world.view().scenes[0];
+        if (!hat && current) { time = current.endsAt; h.at(time); }
+    }
+    assert.ok(hat);
+    assert.deepEqual(hat.route, []);
+    assert.equal(hat.phase, "acting");
+    const appearance = h.world.view().characters[0].appearance;
+    assert.deepEqual(appearance, deterministicAppearance("a1"), "hat rendering is signaled by the scene, not a persistent look mutation");
+    assert.equal(h.world.view().props.some((prop) => prop.kind === "paper"), false);
+    h.at(hat.endsAt);
+    assert.equal(h.world.view().scenes.some((scene) => scene.templateId === "paper-hat"), false);
+    assert.deepEqual(h.world.view().characters[0].appearance, appearance);
+});
+
+test("a returning eligible agent visibly cleans only its own persistent spider web", () => {
     const h = harness();
     h.world.update(snapshot(), preferences());
     h.at(10000);
-    const prop = h.world.view().props[0];
-    assert.ok(prop, "coffee leaves a persistent prop");
-    h.world.update(snapshot([agent("a1", "s1", { state: "working" })]), preferences());
-    h.at(60000);
-    assert.ok(h.world.view().props.some((item) => item.id === prop.id));
-    h.world.update(snapshot([agent("a1", "s1", { state: "working" }), agent("a2", "s2")], [session(), session("s2")]), preferences());
-    let cleanup;
-    for (let time = 70000; time <= 150000; time += 10000) {
-        h.at(time);
-        cleanup = h.world.view().scenes.find((scene) => scene.kind === "cleanup");
-        if (cleanup) break;
-        h.at(time + 4000);
-    }
-    assert.ok(cleanup, "tidying is part of the authored cycle");
-    assert.deepEqual(cleanup.participants, ["a2"]);
-    const target = h.world.view().props.find((item) => item.cleanupSceneId === cleanup.id);
-    assert.equal(target.id, prop.id);
-    assert.deepEqual(h.world.view().characters.find((character) => character.id === "a2").position, target.position);
+    const coffee = h.world.view().scenes[0];
+    assert.ok(coffee);
+    h.at(coffee.endsAt);
+    h.at(20000);
+    const spiderScene = h.world.view().scenes.find((scene) => scene.templateId === "spider-web");
+    assert.ok(spiderScene);
+    assert.deepEqual(spiderScene.participants, [], "the spider is not represented as an agent");
+    const spider = h.world.view().actors.find((actor) => actor.kind === "spider");
+    assert.ok(spider);
+    assert.equal(spider.fictional, true);
+    assert.equal(spider.spaceId, "space:0");
+    assert.ok(spider.route.length >= 3);
+    assert.deepEqual(spider.position, spider.route[0]);
+    assert.equal(h.world.view().props.some((prop) => prop.kind === "web"), false);
+    h.at(spiderScene.endsAt);
+    const web = h.world.view().props.find((prop) => prop.kind === "web");
+    assert.ok(web);
+    assert.equal(web.location.kind, "desk");
+    assert.equal(web.location.deskIndex, 0);
+    if (web.location.kind !== "desk") assert.fail("spider web must be attached to a physical desk");
+    assert.deepEqual(web.location.position, spider.route.at(-1));
+    assert.equal(h.world.view().scenes.some((scene) => scene.templateId === "cleanup-web"), false, "web waits until the agent returns to use the desk");
+    h.at(30000);
+    const returnTrip = h.world.view().scenes.find((scene) => scene.templateId === "chat");
+    assert.ok(returnTrip);
+    h.at(returnTrip.endsAt);
+    const cleanup = h.world.view().scenes.find((scene) => scene.templateId === "cleanup-web");
+    assert.ok(cleanup);
+    assert.deepEqual(cleanup.participants, ["a1"]);
+    assert.deepEqual(cleanup.route, [{ kind: "desk", agentId: "a1" }]);
+    assert.equal(h.world.view().props.find((prop) => prop.id === web.id)?.cleanupSceneId, cleanup.id);
     h.at(cleanup.endsAt - 1);
-    assert.ok(h.world.view().props.some((item) => item.id === target.id));
+    assert.ok(h.world.view().props.some((prop) => prop.id === web.id));
     h.at(cleanup.endsAt);
-    assert.ok(!h.world.view().props.some((item) => item.id === target.id));
+    assert.ok(!h.world.view().props.some((prop) => prop.id === web.id));
+
+    const interrupted = harness();
+    interrupted.world.update(snapshot(), preferences());
+    interrupted.at(10000);
+    interrupted.at(interrupted.world.view().scenes[0].endsAt);
+    interrupted.at(20000);
+    assert.ok(interrupted.world.view().actors.some((actor) => actor.kind === "spider"));
+    interrupted.world.update(snapshot([agent("a1", "s1", { state: "working" })]), preferences());
+    assert.equal(interrupted.world.view().actors.length, 0);
+    assert.equal(interrupted.world.view().scenes.length, 0);
+    assert.equal(interrupted.world.view().props.some((prop) => prop.kind === "web"), false);
 });
 
 test("an arriving working character may visibly set up only its own reused dirty desk once", () => {
     const h = harness();
     h.world.update(snapshot(), preferences());
     h.at(10000);
-    h.at(14000);
+    const firstScene = h.world.view().scenes[0];
+    assert.ok(firstScene);
+    h.at(firstScene.endsAt);
     const original = h.world.view();
-    assert.ok(original.props.some((prop) => prop.deskIndex === 0));
+    assert.ok(original.props.some((prop) => prop.location.kind === "desk" && prop.location.deskIndex === 0));
     const newcomer = agent("new", "s2", { state: "working" });
     const facts = snapshot([agent("a1", "s1", { ended: true }), newcomer], [session("s1", { closed: true, endedAt: 14000 }), session("s2", { title: "Backend APIs" })]);
     const before = structuredClone(facts);
@@ -179,7 +353,7 @@ test("an arriving working character may visibly set up only its own reused dirty
     assert.equal(h.world.view().scenes.find((scene) => scene.kind === "desk-setup").id, setup.id);
     h.at(setup.endsAt);
     assert.equal(h.world.view().props.length, 0);
-    assert.equal(h.world.view().scenes.length, 0);
+    assert.equal(h.world.view().scenes.some((scene) => scene.kind === "desk-setup"), false);
     assert.deepEqual(facts, before);
 });
 
@@ -230,6 +404,70 @@ test("only explicit session closure plus explicit agent exits abandons, dims and
     assert.ok(h.world.view().props.some((prop) => prop.kind === "web"), "restoring never silently clears physical props");
 });
 
+test("ghost ambience roams a bounded room-local route for exactly its effect lifetime", () => {
+    const h = harness();
+    const facts = snapshot([agent("ended", "s1", { ended: true, endedAt: 1 })], [session("s1", { closed: true, endedAt: 1 })]);
+    const before = structuredClone(facts);
+    h.world.update(facts, preferences());
+    let effect;
+    for (let time = 10000; time <= 120000 && !effect; time += 10000) {
+        h.at(time);
+        effect = h.world.view().abandonedEffects.find((item) => item.kind === "ghost");
+        if (!effect) h.at(time + 4000);
+    }
+    assert.ok(effect, "ghost is one of the authored abandoned-room effects");
+    const actor = h.world.view().actors.find((item) => item.kind === "ghost");
+    assert.ok(actor);
+    assert.equal(actor.clusterId, effect.clusterId);
+    assert.equal(actor.spaceId, effect.spaceId);
+    assert.equal(actor.startedAt, effect.startedAt);
+    assert.equal(actor.endsAt, effect.endsAt);
+    assert.equal(actor.fictional, true);
+    assert.ok(actor.route.length >= 4);
+    const [originX, originY] = effect.position.x === 0 && effect.position.y === 0 ? [0, 0] : [effect.position.x, effect.position.y];
+    for (const point of actor.route) {
+        assert.ok(point.x >= originX && point.x <= originX + 400, `x ${point.x} stays in its room`);
+        assert.ok(point.y >= originY && point.y <= originY + 300, `y ${point.y} stays in its room`);
+    }
+    const start = { ...actor.position };
+    h.at(actor.startedAt + 1000);
+    const moving = h.world.view().actors.find((item) => item.id === actor.id);
+    assert.ok(moving);
+    assert.notDeepEqual(moving.position, start, "ghost advances along its route rather than remaining in a corner");
+    h.at(effect.endsAt - 1);
+    assert.ok(h.world.view().abandonedEffects.some((item) => item.id === effect.id));
+    assert.ok(h.world.view().actors.some((item) => item.id === actor.id));
+    h.at(effect.endsAt);
+    assert.ok(!h.world.view().abandonedEffects.some((item) => item.id === effect.id));
+    assert.ok(!h.world.view().actors.some((item) => item.id === actor.id));
+    assert.deepEqual(facts, before, "ghost fiction cannot alter agent/session facts or the provider feed");
+
+    const quiet = harness(() => 0);
+    const unknownFacts = snapshot([agent("unknown", "s1", { state: "unknown" })]);
+    const unknownBefore = structuredClone(unknownFacts);
+    quiet.world.update(unknownFacts, preferences());
+    quiet.at(30000);
+    const quietGhost = quiet.world.view().actors.find((item) => item.kind === "ghost");
+    assert.ok(quietGhost, "quiet-cluster ghost ambience uses the same roaming actor");
+    assert.ok(quiet.world.view().quietEffects.some((item) => item.kind === "ghost" && item.endsAt === quietGhost.endsAt));
+    assert.deepEqual(unknownFacts, unknownBefore);
+});
+
+test("screen-flicker ambience remains an effect and never creates a screen actor", () => {
+    const h = harness();
+    h.world.update(snapshot([agent("ended", "s1", { ended: true, endedAt: 1 })], [session("s1", { closed: true, endedAt: 1 })]), preferences());
+    let flicker;
+    for (let time = 10000; time <= 120000 && !flicker; time += 10000) {
+        h.at(time);
+        flicker = h.world.view().abandonedEffects.find((item) => item.kind === "screen-flicker");
+        if (!flicker) h.at(time + 4000);
+    }
+    assert.ok(flicker);
+    assert.ok(h.world.view().actors.every((actor) => actor.kind !== "screen-flicker"));
+    assert.ok(h.world.view().props.every((prop) => prop.kind !== "screen-flicker"));
+    assert.ok(flicker.endsAt - flicker.startedAt <= 4000);
+});
+
 test("ended characters remain visible and join only explicit idle or ended company", () => {
     const h = harness();
     const participants = [agent("ended", "s1", { state: "working", ended: true, endedAt: 20 }), agent("idle", "s2")];
@@ -237,10 +475,18 @@ test("ended characters remain visible and join only explicit idle or ended compa
     const closedFacts = snapshot(participants, [session("s1", { closed: true, endedAt: 20 }), session("s2")]);
     h.world.update(facts, preferences());
     h.world.update(closedFacts, preferences());
-    h.at(10000);
+    let scene;
+    let time = 10000;
+    for (let attempt = 0; attempt < 20 && !scene; attempt++) {
+        h.at(time);
+        const current = h.world.view().scenes[0];
+        if (current?.participants.includes("ended") && current.participants.includes("idle")) scene = current;
+        else if (current) time = current.endsAt + 6000;
+        else time += 10000;
+    }
+    assert.ok(scene, "ended and idle characters eventually share a multi-seat scene");
     const view = h.world.view();
     const ended = view.characters.find((character) => character.id === "ended");
-    const scene = view.scenes[0];
     assert.equal(ended.ended, true);
     assert.equal(ended.endedAt, 20);
     assert.equal(ended.statusLabel, "Ended");
@@ -270,6 +516,31 @@ test("ended solo scenes are gentle off-duty walks and never present the ended ag
     assert.equal(character.state, "working");
     assert.equal(character.statusLabel, "Ended");
     assert.notDeepEqual(character.position, character.deskPosition);
+});
+
+test("off-duty walks use their matching shared office zones", () => {
+    const destinations = new Map([
+        ["off-duty-stroll", "common-table"],
+        ["off-duty-plants", "plant-corner"],
+        ["off-duty-books", "bookshelf"],
+        ["off-duty-window", "window"],
+    ]);
+    for (const [templateId, zoneId] of destinations) {
+        const h = harness();
+        h.world.update(snapshot([agent("off-duty", "s1", { ended: true, endedAt: 1 })], [session("s1", { closed: true, endedAt: 1 })]), preferences());
+        let found = false;
+        for (let time = 10000; time <= 80000 && !found; time += 10000) {
+            h.at(time);
+            const scene = h.world.view().scenes.find((item) => item.templateId === templateId);
+            if (scene) {
+                assert.deepEqual(scene.route, [{ kind: "zone", zoneId }]);
+                found = true;
+            }
+            const current = h.world.view().scenes[0];
+            if (current) h.at(current.endsAt);
+        }
+        assert.equal(found, true, `${templateId} appears in the off-duty cycle`);
+    }
 });
 
 test("local title motifs cover all twenty work types and ten domains with bounded high-confidence matches", () => {
@@ -333,7 +604,8 @@ test("quiet clusters hide session title motifs without changing facts and restor
         const initial = snapshot();
         h.world.update(initial, preferences());
         h.at(10000);
-        h.at(14000);
+        const scene = h.world.view().scenes[0];
+        if (scene) h.at(scene.endsAt);
         const quietFacts = snapshot([agent("a1", "s1", change)]);
         const before = structuredClone(quietFacts);
         h.world.update(quietFacts, preferences());
@@ -470,7 +742,7 @@ test("dialogue timers include unknown and ended characters, use authored lines a
     assert.equal(h.world.view().dialogue.length, 0);
     h.at(15000);
     const bubbles = h.world.view().dialogue;
-    assert.equal(bubbles.length, agents.length);
+    assert.equal(bubbles.length, 1, "one global scheduler starts one bubble at a time");
     for (const bubble of bubbles) {
         const words = bubble.text.trim().split(/\s+/u).length;
         const expectedDuration = Math.max(3000, Math.min(8000, words * 300));
@@ -486,11 +758,8 @@ test("dialogue timers include unknown and ended characters, use authored lines a
     assert.equal(h.world.view().dialogue.length, 0);
     h.at(30000);
     const repeated = h.world.view().dialogue;
-    assert.equal(repeated.length, agents.length);
-    for (const bubble of repeated) {
-        assert.notEqual(bubble.text, bubbles.find((previous) => previous.agentId === bubble.agentId).text,
-            "a line is not repeated until that agent/state bank is exhausted");
-    }
+    assert.equal(repeated.length, 1);
+    assert.notEqual(repeated[0].agentId, bubbles[0].agentId, "the global queue rotates speakers fairly");
     const slow = harness(() => 1);
     slow.world.update(snapshot([agent("slow", "s1", { state: "unknown" })]), preferences());
     slow.at(29999);
@@ -499,20 +768,25 @@ test("dialogue timers include unknown and ended characters, use authored lines a
     assert.equal(slow.world.view().dialogue.length, 1, "the randomized upper cadence bound is thirty seconds");
 });
 
-test("dialogue reading window counts actual words at the 200 wpm estimate", () => {
+test("dialogue starts are globally staggered and keep the 200 wpm reading window", () => {
     const h = harness();
     const agents = Array.from({ length: 50 }, (_, index) => agent(`speaker-${index}`));
     h.world.update(snapshot(agents), preferences());
-    const upbeat = h.world.view().characters.find((character) => character.voiceFlavor === "upbeat");
-    assert.ok(upbeat);
-
-    h.at(15000);
-    const bubble = h.world.view().dialogue.find((item) => item.agentId === upbeat.id);
-    assert.ok(bubble);
-    assert.equal(bubble.text, "A little sunshine makes this corner feel warm and welcoming today.");
-    const words = bubble.text.trim().split(/\s+/u).length;
-    assert.equal(words, 11);
-    assert.equal(bubble.endsAt - bubble.startedAt, words * 300);
+    h.at(30000);
+    const bubbles = h.world.view().dialogue;
+    assert.ok(bubbles.length <= 1, "a world tick cannot start simultaneous bubbles");
+    const starts = new Set(bubbles.map((item) => item.startedAt));
+    assert.ok(starts.size <= 1);
+    if (bubbles.length) {
+        const bubble = bubbles[0];
+        const words = bubble.text.trim().split(/\\s+/u).length;
+        assert.equal(bubble.endsAt - bubble.startedAt, Math.max(3000, Math.min(8000, words * 300)));
+        h.at(45000);
+        const next = h.world.view().dialogue[0];
+        assert.ok(next);
+        assert.notEqual(next.agentId, bubble.agentId);
+        assert.ok(next.startedAt - bubble.startedAt >= 15000, "office-wide starts have a non-simultaneous minimum interval");
+    }
 });
 
 test("state changes interrupt dialogue and regenerate after the per-agent cooldown", () => {
@@ -549,7 +823,7 @@ test("five stable voice flavors author state-transition dialogue with a cooldown
     h.at(100);
     h.world.update(snapshot(agents.map((item) => ({ ...item, state: "working" }))), preferences());
     const bubbles = h.world.view().dialogue;
-    assert.equal(bubbles.length, 50);
+    assert.equal(bubbles.length, 1, "a state change can start only one office-wide bubble");
     for (const bubble of bubbles) {
         assert.equal(bubble.fictional, true);
         assert.equal(bubble.placement, "secondary");
@@ -564,9 +838,10 @@ test("five stable voice flavors author state-transition dialogue with a cooldown
     assert.equal(h.world.view().dialogue.length, 0, "rapid transitions respect cooldown");
     h.at(20000);
     h.world.update(snapshot(agents.map((item) => ({ ...item, state: "waiting", waitingReason: "approval" }))), preferences());
-    assert.equal(h.world.view().dialogue.length, 0, "a transition interrupts the line while respecting cooldown");
+    assert.equal(h.world.view().dialogue.length, 0, "a factual transition interrupts the current fictional line");
     h.at(35000);
-    assert.equal(h.world.view().dialogue.length, 50);
+    assert.equal(h.world.view().dialogue.length, 1);
+    assert.ok(h.world.view().dialogue[0].startedAt >= bubbles[0].startedAt + 15000);
     assert.ok(h.world.view().characters.every((character) => character.statusLabel === "Waiting for approval" && character.pose === "attention"));
     assert.deepEqual(h.world.view().characters.map((character) => character.voiceFlavor), agents.map((item) => {
         const one = harness();
@@ -647,7 +922,8 @@ test("hidden abandoned props cannot be removed by an invisible cleanup", () => {
     const active = session("s2");
     h.world.update(snapshot([agent(), agent("other", "s2", { state: "working" })], [session(), active]), preferences());
     h.at(10000);
-    h.at(14000);
+    const scene = h.world.view().scenes[0];
+    if (scene) h.at(scene.endsAt);
     const leftBehind = h.world.view().props[0];
     h.world.update(snapshot([agent("a1", "s1", { ended: true }), agent("other", "s2")], [session("s1", { closed: true, endedAt: 14000 }), active]), preferences({ showEnded: false }));
     for (let time = 24000; time <= 104000; time += 10000) {
@@ -662,36 +938,43 @@ test("hidden abandoned props cannot be removed by an invisible cleanup", () => {
 test("arrival takes over interrupted own-desk cleanup but never cleans someone else's desk", () => {
     const h = harness();
     h.world.update(snapshot(), preferences());
-    for (let time = 10000; time <= 50000; time += 10000) {
+    let cleanupStarted = false;
+    for (let time = 10000; time <= 200000; time += 10000) {
         h.at(time);
-        if (time < 50000) h.at(time + 4000);
+        if (h.world.view().scenes[0]?.kind === "cleanup") { cleanupStarted = true; break; }
+        h.at(time + 4000);
     }
-    assert.equal(h.world.view().scenes[0].kind, "cleanup");
+    assert.equal(cleanupStarted, true, "the authored cycle eventually cleans a persistent prop");
     h.world.update(snapshot([agent("a1", "s1", { ended: true }), agent("new", "s2", { state: "working" })], [session("s1", { closed: true }), session("s2")]), preferences());
     const view = h.world.view();
     const setup = view.scenes.find((scene) => scene.kind === "desk-setup");
     const arriving = view.characters.find((character) => character.id === "new");
     assert.ok(setup);
     assert.ok(arriving);
-    const ownDeskProps = view.props.filter((prop) => prop.spaceId === arriving.spaceId && prop.deskIndex === arriving.deskIndex);
+    const ownDeskProps = view.props.filter((prop) => prop.location.kind === "desk" && prop.location.spaceId === arriving.spaceId && prop.location.deskIndex === arriving.deskIndex);
     assert.ok(ownDeskProps.length > 0);
     assert.ok(ownDeskProps.every((prop) => prop.cleanupSceneId === setup.id));
-    assert.ok(view.props.some((prop) => prop.deskIndex === null && prop.cleanupSceneId === null));
+    const globalPropIds = view.props.filter((prop) => prop.location.kind === "zone").map((prop) => prop.id);
+    assert.ok(globalPropIds.every((id) => view.props.find((prop) => prop.id === id)?.cleanupSceneId === null));
     h.at(setup.endsAt);
-    assert.ok(!h.world.view().props.some((prop) => prop.spaceId === arriving.spaceId && prop.deskIndex === arriving.deskIndex));
-    assert.ok(h.world.view().props.some((prop) => prop.deskIndex === null), "desk setup leaves common-area props untouched");
+    assert.ok(!h.world.view().props.some((prop) => prop.location.kind === "desk" && prop.location.spaceId === arriving.spaceId && prop.location.deskIndex === arriving.deskIndex));
+    assert.ok(globalPropIds.every((id) => h.world.view().props.some((prop) => prop.id === id)), "desk setup leaves common-area props untouched");
 });
 
-test('a returning provider identity readies its own dirty desk once on reentry',()=>{
- const h=harness();
- h.world.update(snapshot(),preferences());
- h.at(10000);h.at(14000);
- assert.ok(h.world.view().props.length);
- h.world.update(snapshot([agent('a1','s1',{ended:true,endedAt:14000})],[session('s1',{closed:true,endedAt:14000})]),preferences());
- h.world.update(snapshot([agent('a1','s1',{state:'working'})]),preferences());
- assert.equal(h.world.view().scenes.filter(scene=>scene.kind==='desk-setup').length,1);
- h.at(18000);
- h.world.update(snapshot([agent('a1','s1',{state:'working'})]),preferences());
- assert.equal(h.world.view().scenes.length,0);
- assert.equal(h.world.view().props.length,0);
+test("a returning provider identity readies its own dirty desk once on reentry", () => {
+    const h = harness();
+    h.world.update(snapshot(), preferences());
+    h.at(10000);
+    const firstScene = h.world.view().scenes[0];
+    assert.ok(firstScene);
+    h.at(firstScene.endsAt);
+    assert.ok(h.world.view().props.length);
+    h.world.update(snapshot([agent("a1", "s1", { ended: true, endedAt: 14000 })], [session("s1", { closed: true, endedAt: 14000 })]), preferences());
+    h.world.update(snapshot([agent("a1", "s1", { state: "working" })]), preferences());
+    const setup = h.world.view().scenes.find((scene) => scene.kind === "desk-setup");
+    assert.ok(setup);
+    h.at(setup.endsAt);
+    h.world.update(snapshot([agent("a1", "s1", { state: "working" })]), preferences());
+    assert.equal(h.world.view().scenes.some((scene) => scene.kind === "desk-setup"), false);
+    assert.equal(h.world.view().props.some((prop) => prop.location.kind === "desk" && prop.location.deskIndex === 0), false);
 });

@@ -54,6 +54,19 @@ def assert_frame_target(state, expected, scenario_id, frame_id):
         actual = [len(scene["participants"]) for scene in scenes if scene["templateId"] == template_id]
         if count not in actual:
             raise RuntimeError(f"Frame {scenario_id}:{frame_id} expected {count} participants in {template_id}, got {actual}")
+    for route in expected.get("sceneRoutes", []):
+        actual = next((scene for scene in scenes if scene["templateId"] == route["templateId"]), None)
+        if actual is None or actual["route"] != route["route"] or route.get("phase", actual["phase"]) != actual["phase"]:
+            raise RuntimeError(f"Frame {scenario_id}:{frame_id} scene route mismatch: {route}")
+    for location in expected.get("propLocations", []):
+        if not any(prop["kind"] == location["kind"] and prop["location"] == location["location"] for prop in world["props"]):
+            raise RuntimeError(f"Frame {scenario_id}:{frame_id} missed prop location: {location}")
+    actor_kinds = {actor["kind"] for actor in world["actors"]}
+    if not set(expected.get("actorKinds", [])).issubset(actor_kinds):
+        raise RuntimeError(f"Frame {scenario_id}:{frame_id} missed actor kinds: {expected.get('actorKinds')}")
+    for route in expected.get("actorRoutes", []):
+        if not any(actor["kind"] == route["kind"] and actor["route"] == route["route"] for actor in world["actors"]):
+            raise RuntimeError(f"Frame {scenario_id}:{frame_id} missed actor route: {route}")
     for character in expected.get("poses", []):
         if not any((not character.get("agentId") or agent["agentId"] == character["agentId"]) and agent["pose"] == character["pose"] for agent in characters):
             raise RuntimeError(f"Frame {scenario_id}:{frame_id} missed expected pose {character}")
@@ -151,6 +164,18 @@ def main():
                     expected_frame = named_frame["id"] if scenario["frames"] else ""
                     if selected_scenario != scenario["id"] or selected_frame != expected_frame:
                         raise RuntimeError(f"Stable scenario URL selected {selected_scenario}:{selected_frame}, expected {scenario['id']}:{expected_frame}")
+                    frame_buttons = page.locator("#frame-list button[data-frame]")
+                    if frame_buttons.count() != len(scenario["frames"]):
+                        raise RuntimeError(f"Frame index mismatch for {scenario['id']}: {frame_buttons.count()} of {len(scenario['frames'])} frames")
+                    if scenario["frames"]:
+                        current_frame = page.locator("#frame-list button[aria-current='step']").get_attribute("data-frame")
+                        if current_frame != named_frame["id"]:
+                            raise RuntimeError(f"Frame index did not highlight {scenario['id']}:{named_frame['id']}")
+                        frame_index = next(index for index, item in enumerate(scenario["frames"]) if item["id"] == named_frame["id"])
+                        if page.locator("#frame-previous").is_disabled() != (frame_index == 0):
+                            raise RuntimeError(f"Previous-frame boundary mismatch for {scenario['id']}:{named_frame['id']}")
+                        if page.locator("#frame-next").is_disabled() != (frame_index == len(scenario['frames']) - 1):
+                            raise RuntimeError(f"Next-frame boundary mismatch for {scenario['id']}:{named_frame['id']}")
                     page.wait_for_function("document.querySelector('#office-preview').src.startsWith('http://127.0.0.1:')")
                     preview_url = page.locator("#office-preview").get_attribute("src")
                     if not preview_url:
@@ -195,6 +220,24 @@ def main():
                     captured.append(stem)
             preference_scenario = next(scenario for scenario in scenarios if scenario["id"] == "no-observation")
             verify_preference_isolation(page, base_url, preference_scenario)
+            action_scenario = next(scenario for scenario in scenarios if scenario["id"] == "office-actions")
+            if len(action_scenario["frames"]) < 2:
+                raise RuntimeError("Office action scenario needs multiple named frames")
+            last_frames = action_scenario["frames"][-2:]
+            page.goto(f"{base_url}?{urlencode({'scenario': action_scenario['id'], 'frame': last_frames[0]['id']})}", wait_until="networkidle")
+            page.locator("#frame-next").click()
+            if page.locator("#frame-select").input_value() != last_frames[1]["id"]:
+                raise RuntimeError("Scenario frame navigation did not advance to the next named frame")
+            page.locator("#frame-previous").click()
+            if page.locator("#frame-select").input_value() != last_frames[0]["id"]:
+                raise RuntimeError("Scenario frame navigation did not return to the previous named frame")
+            page.locator("#play-frames").click()
+            page.wait_for_function(
+                "frameId => document.querySelector('#frame-select').value === frameId && document.querySelector('#play-frames').getAttribute('aria-pressed') === 'false'",
+                arg=last_frames[1]["id"], timeout=8000,
+            )
+            if page.locator("#play-frames").text_content() != "Play frames":
+                raise RuntimeError("Scenario frame playback did not stop at the final selected frame")
             browser.close()
             if external_requests:
                 raise RuntimeError(f"Unexpected non-loopback browser requests: {external_requests}")

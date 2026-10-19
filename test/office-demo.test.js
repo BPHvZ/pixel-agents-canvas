@@ -37,7 +37,7 @@ test("every catalog scenario passes through the production office-state factory"
   assert.equal(new Set(scenarios.map((scenario) => scenario.id)).size, scenarios.length);
   assert.deepEqual(scenarios.map((scenario) => scenario.id), [
     "no-observation", "source-health", "copilot-empty", "codex-empty", "empty-session", "copilot-working", "provider-combinations",
-    "attention-states", "uncertain-agents", "ended-off-duty", "privacy-appearance", "coverage-feed", "quiet-fiction", "preferences-off", "responsive-reduced", "desk-setup",
+    "attention-states", "uncertain-agents", "ended-off-duty", "privacy-appearance", "coverage-feed", "quiet-fiction", "preferences-off", "responsive-reduced", "desk-setup", "office-actions",
   ]);
   const covered = new Set([...scenarios.flatMap((scenario) => scenario.covers), ...SCENARIO_GALLERY_FRAMES.flatMap((frame) => frame.covers), ...SCENARIO_LIMITATIONS.map((item) => item.id)]);
   assert.deepEqual(SCENARIO_COVERAGE.filter((item) => !covered.has(item)), []);
@@ -72,6 +72,7 @@ test("scenario source inputs are deterministic and catalog coverage inventory ha
       if ("advanceTo" in input && input.advanceTo !== undefined) assert.ok(input.tickIntervalMs > 0, `${scenario.id} must define a positive tick interval`);
     }
   }
+  assert.equal(buildScenarioFixture("office-actions").worldTickIntervalMs, 1000);
   assert.equal(new Set(SCENARIO_COVERAGE).size, SCENARIO_COVERAGE.length);
 });
 
@@ -111,6 +112,19 @@ test("named gallery frames meet their machine-readable production-world targets"
       const expectedParticipants = expected.sceneParticipantCounts?.[templateId];
       if (scene && expectedParticipants !== undefined) assert.equal(scene.participants.length, expectedParticipants, frame.id);
     }
+    for (const sceneRoute of expected.sceneRoutes ?? []) {
+      const scene = state.world?.scenes.find((item) => item.templateId === sceneRoute.templateId);
+      assert.ok(scene, frame.id);
+      assert.deepEqual(scene?.route, sceneRoute.route, frame.id);
+      if (sceneRoute.phase) assert.equal(scene?.phase, sceneRoute.phase, frame.id);
+    }
+    for (const propLocation of expected.propLocations ?? []) {
+      assert.ok(state.world?.props.some((prop) => prop.kind === propLocation.kind && JSON.stringify(prop.location) === JSON.stringify(propLocation.location)), frame.id);
+    }
+    for (const actorKind of expected.actorKinds ?? []) assert.ok(state.world?.actors.some((actor) => actor.kind === actorKind), frame.id);
+    for (const actorRoute of expected.actorRoutes ?? []) {
+      assert.ok(state.world?.actors.some((actor) => actor.kind === actorRoute.kind && JSON.stringify(actor.route) === JSON.stringify(actorRoute.route)), frame.id);
+    }
     for (const effect of expected.effectKinds ?? []) {
       const [family, kind] = effect.split(":");
       const effects = family === "quiet" ? state.world?.quietEffects : state.world?.abandonedEffects;
@@ -145,7 +159,7 @@ test("seeded random scenario ordering is reproducible and seed-sensitive", () =>
 test("scenarios include provider, factual state, privacy, feed, fiction, and responsive examples", () => {
   const scenarios = listScenarios();
   const covers = new Set(scenarios.flatMap((scenario) => scenario.covers));
-  for (const label of ["both providers", "working", "waiting", "idle", "unknown state", "stale freshness", "disconnected agent", "explicit end", "hidden titles", "coverage matrix", "activity feed", "fiction label", "390 px viewport", "reduced motion"]) {
+  for (const label of ["both providers", "working", "waiting", "idle", "unknown state", "stale freshness", "disconnected agent", "explicit end", "hidden titles", "coverage matrix", "activity feed", "fiction label", "390 px viewport", "reduced motion", "coffee station route", "common table route", "persistent global book", "persistent desk mug", "persistent spider web", "spider actor route", "own-desk web cleanup", "temporary hat appearance", "globally staggered dialogue"]) {
     assert.ok(covers.has(label), `missing scenario coverage: ${label}`);
   }
 });

@@ -37,6 +37,10 @@ export interface ScenarioFrame {
     expected: {
         sceneTemplateIds?: readonly string[];
         sceneKinds?: readonly ("vignette" | "cleanup" | "desk-setup")[];
+        sceneRoutes?: readonly { templateId: string; route: readonly import("../../.github/extensions/pixel-agents-canvas/src/world-types.js").WorldWaypoint[]; phase?: "walking" | "acting" | "returning" }[];
+        propLocations?: readonly { kind: import("../../.github/extensions/pixel-agents-canvas/src/world-types.js").PropKind; location: import("../../.github/extensions/pixel-agents-canvas/src/world-types.js").WorldPropLocation }[];
+        actorKinds?: readonly import("../../.github/extensions/pixel-agents-canvas/src/world-types.js").WorldActor["kind"][];
+        actorRoutes?: readonly { kind: import("../../.github/extensions/pixel-agents-canvas/src/world-types.js").WorldActor["kind"]; route: readonly import("../../.github/extensions/pixel-agents-canvas/src/world-types.js").Position[] }[];
         sceneParticipantCounts?: Readonly<Record<string, number>>;
         effectKinds?: readonly string[];
         poses?: readonly { agentId?: string; pose: import("../../.github/extensions/pixel-agents-canvas/src/world-types.js").CharacterPose }[];
@@ -88,6 +92,8 @@ export interface ScenarioFixture extends ScenarioStateInput {
     viewport: "wide" | "tablet" | "narrow";
     reducedMotion: boolean;
     seed: string;
+    /** How frequently to advance the production world while capturing frames, when no step defines its own interval. */
+    worldTickIntervalMs?: number;
     frames: readonly ScenarioFrame[];
     steps: readonly ScenarioStep[];
 }

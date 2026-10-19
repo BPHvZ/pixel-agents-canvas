@@ -38,6 +38,15 @@
         </label>
         <button id="reset" type="button">Reset / replay</button>
       </div>
+      <div class="frame-navigation" aria-label="Selected scenario frame navigation">
+        <button id="frame-previous" type="button">Previous frame</button>
+        <button id="frame-next" type="button">Next frame</button>
+        <button id="play-frames" type="button" aria-pressed="false">Play frames</button>
+      </div>
+      <section class="frame-index" aria-labelledby="frame-index-title">
+        <h2 id="frame-index-title">Frames in this scenario</h2>
+        <ol id="frame-list" class="frame-list"></ol>
+      </section>
       <p id="player-status" role="status" aria-live="polite">Loading scenario catalog…</p>
       <p class="direct-link">Each named scenario frame has a stable URL and replays at its declared virtual time.</p>
     </section>

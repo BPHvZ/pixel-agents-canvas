@@ -7,6 +7,7 @@
 /** @typedef {import('./world-types.js').VoiceFlavor} VoiceFlavor */
 /** @typedef {{session: OfficeSession, space: number, desks: Map<string, number>, abandoned: boolean, retired: boolean, endedAt: number | null}} Cluster */
 
+export const ROUTE_TRAVEL_DURATION_MS = 2000;
 /** @type {VoiceFlavor[]} */
 const VOICES = ["curious", "dry-witted", "earnest", "calm", "upbeat"];
 const PALETTES = ["#5c8ed6", "#c77951", "#7a9e64", "#aa78bc", "#cc9f42", "#5baba3"];
@@ -26,15 +27,17 @@ const HAUNTS = [
     { kind: "chair-movement", label: "An empty chair turns a little" },
 ];
 const VIGNETTES = [
-    { id: "coffee", label: "Sharing a coffee break" },
-    { id: "tea", label: "Pouring a cup of tea" },
+    { id: "coffee", label: "Brewing coffee and carrying a mug back" },
+    { id: "tea", label: "Pouring tea and carrying a mug back" },
     { id: "stretch", label: "Stretching and taking a short walk" },
     { id: "plant", label: "Caring for the office plants" },
     { id: "tidy", label: "Tidying the office" },
-    { id: "reading", label: "Reading a little book" },
-    { id: "antics", label: "Balancing a paper hat" },
-    { id: "chat", label: "A friendly office chat" },
+    { id: "reading", label: "Reading a little book at the common table" },
+    { id: "paper-hat", label: "Balancing a paper hat" },
+    { id: "chat", label: "A friendly office chat at the common table" },
+    { id: "spider-web", label: "A tiny spider crosses a desk and leaves a web" },
 ];
+const SOLO_VIGNETTES = VIGNETTES.filter((template) => template.id !== "spider-web");
 const OFF_DUTY_VIGNETTES = [
     { id: "off-duty-stroll", label: "Taking a gentle stroll in the common area" },
     { id: "off-duty-plants", label: "Enjoying a quiet stroll by the office plants" },
@@ -147,6 +150,8 @@ export function createOfficeWorld({ clock = Date.now, random = Math.random } = {
     let now = 0;
     let sequence = 0;
     let participantOffset = 0;
+    /** @type {string | null} */
+    let lastDialogueAgentId = null;
     /** @type {number | null} */
     let nextVignetteAt = null;
     /** @type {import('./world-types.js').WorldScene[]} */
@@ -156,7 +161,10 @@ export function createOfficeWorld({ clock = Date.now, random = Math.random } = {
     const unitRandom = () => { const value = random(); return Number.isFinite(value) ? Math.min(1 - Number.EPSILON, Math.max(0, value)) : 0; };
     const cadence = () => 10000 + Math.round(unitRandom() * 20000);
     const dialogueCadence = () => 15000 + Math.round(unitRandom() * 15000);
+    /** @type {number | null} */
+    let nextGlobalDialogueAt = null;
     const nextVignette = shuffleCycle(VIGNETTES, unitRandom);
+    const nextSoloVignette = shuffleCycle(SOLO_VIGNETTES, unitRandom);
     const nextOffDutyVignette = shuffleCycle(OFF_DUTY_VIGNETTES, unitRandom);
     const nextHaunt = shuffleCycle(HAUNTS, unitRandom);
     const nextQuietEffect = shuffleCycle(HAUNTS, unitRandom);
@@ -169,6 +177,14 @@ export function createOfficeWorld({ clock = Date.now, random = Math.random } = {
     let spaces = 0;
     /** @type {import('./world-types.js').WorldProp[]} */
     let props = [];
+    /** @type {import('./world-types.js').WorldActor[]} */
+    let actors = [];
+    /** @type {Map<string, {kind: import('./world-types.js').PropKind, location: import('./world-types.js').WorldPropLocation}>} */
+    const pendingProps = new Map();
+    /** @type {Map<string, {cluster: Cluster, deskIndex: number, position: import('./world-types.js').Position}>} */
+    const spiderWebs = new Map();
+    /** @type {Map<string, string>} */
+    const sceneActors = new Map();
     /** @type {import('./world-types.js').AbandonedEffect[]} */
     let effects = [];
     /** @type {import('./world-types.js').WorldQuietEffect[]} */
@@ -227,7 +243,9 @@ export function createOfficeWorld({ clock = Date.now, random = Math.random } = {
         const duration = Math.max(3000, Math.min(8000, wordCount * 300));
         dialogue.push({ id: `dialogue:${++sequence}`, agentId: agent.id, flavor, label: "Fictional character dialogue", text, startedAt: now, endsAt: now + duration, placement: "secondary", fictional: true });
         lastDialogueAt.set(agent.id, now);
+        lastDialogueAgentId = agent.id;
         dialogueDueAt.set(agent.id, now + dialogueCadence());
+        nextGlobalDialogueAt = now + dialogueCadence();
     }
 
     /** @param {OfficeAgent} agent */
@@ -259,20 +277,120 @@ export function createOfficeWorld({ clock = Date.now, random = Math.random } = {
         return { x: point.x + 40 + index % 4 * 90, y: point.y + 80 + Math.floor(index / 4) * 90 };
     }
 
-    /** @param {import('./world-types.js').PropKind} kind @param {Cluster} cluster @param {number | null} index */
-    function leaveProp(kind, cluster, index) {
-        props.push({ id: `prop:${++sequence}`, spaceId: `space:${cluster.space}`, deskIndex: index, kind, position: index === null ? { x: origin(cluster.space).x + 20, y: origin(cluster.space).y + 30 } : deskPosition(cluster, index), createdAt: now, cleanupSceneId: null, fictional: true });
+    /** @param {string} templateId @param {string[]} participants @param {import('./world-types.js').WorldProp | undefined} [target] @returns {import('./world-types.js').WorldWaypoint[]} */
+    function sceneRoute(templateId, participants, target) {
+        if (templateId === "coffee" || templateId === "tea") return [{ kind: "zone", zoneId: "coffee-station" }];
+        if (["reading", "chat", "stretch", "off-duty-stroll"].includes(templateId)) return [{ kind: "zone", zoneId: "common-table" }];
+        if (["plant", "off-duty-plants"].includes(templateId)) return [{ kind: "zone", zoneId: "plant-corner" }];
+        if (templateId === "off-duty-books") return [{ kind: "zone", zoneId: "bookshelf" }];
+        if (templateId === "off-duty-window") return [{ kind: "zone", zoneId: "window" }];
+        if (target?.location.kind === "zone") return [{ kind: "zone", zoneId: target.location.zoneId }];
+        if (target && target.location.kind === "desk" && target.location.deskIndex !== null) {
+            const location = target.location;
+            const cluster = [...clusters.values()].find((candidate) => `space:${candidate.space}` === location.spaceId);
+            const owner = cluster && [...cluster.desks.entries()].find(([, index]) => index === location.deskIndex)?.[0];
+            if (owner) return [{ kind: "desk", agentId: owner }];
+        }
+        const participantId = participants[0];
+        if (participantId && ["plant", "off-duty-plants"].includes(templateId)) return [{ kind: "desk", agentId: participantId }];
+        return [];
+    }
+
+    /** @param {import('./world-types.js').PropKind} kind @param {import('./world-types.js').WorldPropLocation} location */
+    function addProp(kind, location) {
+        props.push({ id: `prop:${++sequence}`, location, kind, createdAt: now, cleanupSceneId: null, fictional: true });
+    }
+
+    /** @param {import('./world-types.js').PropKind} kind @param {Cluster} cluster @param {number} deskIndex @param {import('./world-types.js').Position} [position] */
+    function leaveDeskProp(kind, cluster, deskIndex, position) {
+        addProp(kind, { kind: "desk", spaceId: `space:${cluster.space}`, deskIndex, position: position ?? deskPosition(cluster, deskIndex) });
+    }
+
+    /** @param {import('./world-types.js').OfficeZoneId} zoneId @returns {import('./world-types.js').WorldPropLocation} */
+    function nextZoneLocation(zoneId) {
+        const occupied = new Set(props.flatMap((prop) => prop.location.kind === "zone" && prop.location.zoneId === zoneId ? [prop.location.slot] : []));
+        let slot = 0;
+        while (occupied.has(slot)) slot++;
+        return { kind: "zone", zoneId, slot };
+    }
+
+    /** @param {OfficeAgent} agent */
+    function startOwnWebCleanup(agent) {
+        if (!preferences.vignettes || !eligible(agent) || scenes.some((scene) => scene.participants.includes(agent.id))) return;
+        const cluster = clusters.get(agent.sessionId);
+        const deskIndex = cluster?.desks.get(agent.id);
+        if (!cluster || deskIndex === undefined) return;
+        const target = props.find((prop) => prop.kind === "web" && prop.cleanupSceneId === null && prop.location.kind === "desk" && prop.location.spaceId === `space:${cluster.space}` && prop.location.deskIndex === deskIndex);
+        if (!target) return;
+        const id = `scene:${++sequence}`;
+        const endsAt = now + 6000;
+        scenes.push({ id, templateId: "cleanup-web", kind: "cleanup", label: "Office fiction: Cleaning a spiderweb before using the desk", participants: [agent.id], route: [{ kind: "desk", agentId: agent.id }], phase: "walking", startedAt: now, endsAt, fictional: true });
+        target.cleanupSceneId = id;
+    }
+
+    /** @param {Cluster} cluster @param {number} deskIndex @returns {string} */
+    function spawnSpider(cluster, deskIndex) {
+        const start = deskPosition(cluster, deskIndex);
+        const position = { x: start.x - 26, y: start.y - 12 };
+        const id = `actor:${++sequence}`;
+        const webPosition = { x: start.x + 22, y: start.y - 4 };
+        actors.push({ id, kind: "spider", spaceId: `space:${cluster.space}`, position, route: [position, { x: start.x, y: start.y - 18 }, webPosition], startedAt: now, endsAt: now + 4000, fictional: true });
+        spiderWebs.set(id, { cluster, deskIndex, position: webPosition });
+        return id;
+    }
+
+    /** @param {Cluster} cluster @param {number} endsAt */
+    function spawnGhost(cluster, endsAt) {
+        const room = origin(cluster.space);
+        const route = [
+            { x: room.x + 80, y: room.y + 220 },
+            { x: room.x + 320, y: room.y + 220 },
+            { x: room.x + 320, y: room.y + 270 },
+            { x: room.x + 80, y: room.y + 270 },
+            { x: room.x + 80, y: room.y + 220 },
+        ];
+        const start = route[0];
+        if (!start) return;
+        actors.push({ id: `actor:${++sequence}`, kind: "ghost", clusterId: `cluster:${cluster.session.id}`, spaceId: `space:${cluster.space}`, position: { ...start }, route, startedAt: now, endsAt, fictional: true });
+    }
+
+    /** @param {number} startedAt @param {number} endsAt @returns {"walking" | "acting" | "returning"} */
+    function scenePhase(startedAt, endsAt) {
+        if (now < startedAt + ROUTE_TRAVEL_DURATION_MS) return "walking";
+        if (now >= endsAt - ROUTE_TRAVEL_DURATION_MS) return "returning";
+        return "acting";
+    }
+
+    /** @param {import('./world-types.js').WorldActor} actor */
+    function updateActorPosition(actor) {
+        if (actor.kind !== "ghost" || actor.route.length < 2) return;
+        const elapsed = Math.max(0, Math.min(actor.endsAt - actor.startedAt, now - actor.startedAt));
+        const progress = elapsed / Math.max(1, actor.endsAt - actor.startedAt) * (actor.route.length - 1);
+        const segment = Math.min(actor.route.length - 2, Math.floor(progress));
+        const from = actor.route[segment];
+        const to = actor.route[segment + 1];
+        if (!from || !to) return;
+        const fraction = Math.min(1, progress - segment);
+        actor.position = { x: from.x + (to.x - from.x) * fraction, y: from.y + (to.y - from.y) * fraction };
     }
 
     /** @param {import('./world-types.js').WorldScene} scene */
     function cancel(scene) {
         for (const prop of props) if (prop.cleanupSceneId === scene.id) prop.cleanupSceneId = null;
+        pendingProps.delete(scene.id);
+        const actorId = sceneActors.get(scene.id);
+        if (actorId) {
+            actors = actors.filter((actor) => actor.id !== actorId);
+            spiderWebs.delete(actorId);
+            sceneActors.delete(scene.id);
+        }
         scenes = scenes.filter((candidate) => candidate.id !== scene.id);
     }
 
     /** @param {import('./world-types.js').WorldScene} scene */
     function sceneIsValid(scene) {
         if (!preferences.vignettes) return false;
+        if (scene.templateId === "spider-web") return [...agents.values()].some(eligible);
         return scene.participants.every((id) => {
             const agent = agents.get(id);
             if (!agent) return false;
@@ -288,11 +406,41 @@ export function createOfficeWorld({ clock = Date.now, random = Math.random } = {
             return Boolean(agent && bubble.endsAt > now && dialogueVisible(agent));
         });
         for (const [id, until] of completionUntil) if (until <= now || !agents.has(id)) completionUntil.delete(id);
+        for (const actor of actors) updateActorPosition(actor);
+        for (const actor of actors.filter((candidate) => candidate.endsAt <= now)) {
+            const web = spiderWebs.get(actor.id);
+            if (preferences.vignettes && web) leaveDeskProp("web", web.cluster, web.deskIndex, web.position);
+            spiderWebs.delete(actor.id);
+        }
+        if (!preferences.vignettes) for (const actor of actors) spiderWebs.delete(actor.id);
+        actors = actors.filter((actor) => preferences.vignettes && actor.endsAt > now);
         for (const scene of [...scenes]) {
             if (!sceneIsValid(scene)) cancel(scene);
             else if (scene.endsAt <= now) {
-                props = props.filter((prop) => prop.cleanupSceneId !== scene.id);
+                /** @type {{spaceId: string, deskIndex: number}[]} */
+                const setupDesks = scene.kind === "desk-setup" ? scene.participants.flatMap((id) => {
+                    const agent = agents.get(id);
+                    const cluster = agent && clusters.get(agent.sessionId);
+                    const deskIndex = cluster?.desks.get(id);
+                    return cluster && deskIndex !== undefined ? [{ spaceId: `space:${cluster.space}`, deskIndex }] : [];
+                }) : [];
+                props = props.filter((prop) => {
+                    if (prop.cleanupSceneId === scene.id) return false;
+                    const location = prop.location;
+                    if (location.kind !== "desk") return true;
+                    return !setupDesks.some((desk) => desk.spaceId === location.spaceId && desk.deskIndex === location.deskIndex);
+                });
+                const pending = pendingProps.get(scene.id);
+                if (pending) addProp(pending.kind, pending.location);
+                pendingProps.delete(scene.id);
+                sceneActors.delete(scene.id);
                 scenes = scenes.filter((candidate) => candidate.id !== scene.id);
+                if (scene.route.length) for (const id of scene.participants) {
+                    const participant = agents.get(id);
+                    if (participant) startOwnWebCleanup(participant);
+                }
+            } else {
+                scene.phase = scene.route.length ? scenePhase(scene.startedAt, scene.endsAt) : "acting";
             }
         }
         const groupCandidates = [...agents.values()].filter(groupEligible);
@@ -311,7 +459,8 @@ export function createOfficeWorld({ clock = Date.now, random = Math.random } = {
                     const solo = soloOnlyCandidates[Math.floor(participantOffset / 2) % soloOnlyCandidates.length];
                     if (solo) participants = [solo.id];
                 } else if (groupCandidates.length > 1) {
-                    participants = Array.from({ length: Math.min(2, groupCandidates.length) }, (_, i) => groupCandidates[(participantOffset + i) % groupCandidates.length]?.id).filter((id) => id !== undefined);
+                    const orderedCandidates = [...groupCandidates].sort((left, right) => left.id.localeCompare(right.id));
+                    participants = Array.from({ length: Math.min(4, orderedCandidates.length) }, (_, i) => orderedCandidates[(participantOffset + i) % orderedCandidates.length]?.id).filter((id) => id !== undefined).sort();
                 } else if (groupCandidates.length === 1) {
                     const only = groupCandidates[0];
                     if (only) participants = [only.id];
@@ -319,25 +468,45 @@ export function createOfficeWorld({ clock = Date.now, random = Math.random } = {
                     const solo = soloCandidates[participantOffset % soloCandidates.length];
                     if (solo) participants = [solo.id];
                 }
+                const initialFirst = agents.get(participants[0] ?? "");
+                template = initialFirst?.ended && participants.length === 1 ? nextOffDutyVignette() : chooseSoloOnly || groupCandidates.length === 0 ? nextSoloVignette() : nextVignette();
+                if (template?.id === "coffee" || template?.id === "tea") participants = participants.slice(0, 1);
                 const first = agents.get(participants[0] ?? "");
-                template = first?.ended && participants.length === 1 ? nextOffDutyVignette() : nextVignette();
                 participantOffset++;
-                if (template && participants.length) {
-                    const target = template.id === "tidy" && participants.every((id) => {
+                if (template && (participants.length || template.id === "spider-web")) {
+                    const eligibleParticipants = participants.every((id) => {
                         const participant = agents.get(id);
                         return Boolean(participant && eligible(participant));
-                    }) ? props.find((prop) => !prop.cleanupSceneId && [...clusters.values()].some((cluster) => `space:${cluster.space}` === prop.spaceId && !cluster.retired && (!cluster.abandoned || preferences.showEnded))) : undefined;
-                    const scene = { id: `scene:${++sequence}`, templateId: template.id, kind: target ? "cleanup" : "vignette", label: `Office fiction: ${template.label}`, participants, startedAt: now, endsAt: now + 4000, fictional: true };
+                    });
+                    const canTidy = template.id === "tidy" && eligibleParticipants;
+                    const target = canTidy ? props.find((prop) => {
+                        if (prop.cleanupSceneId) return false;
+                        const location = prop.location;
+                        if (location.kind === "zone") return true;
+                        return [...clusters.values()].some((cluster) => `space:${cluster.space}` === location.spaceId && !cluster.retired && (!cluster.abandoned || preferences.showEnded));
+                    }) : undefined;
+                    const templateId = target?.kind === "web" ? "cleanup-web" : template.id;
+                    const sceneParticipants = template.id === "spider-web" ? [] : participants;
+                    const route = sceneRoute(templateId, sceneParticipants, target);
+                    const sceneId = `scene:${++sequence}`;
+                    const endsAt = now + (template.id === "spider-web" ? 4000 : 6000);
                     /** @type {import('./world-types.js').WorldScene} */
-                    const staged = { ...scene, kind: target ? "cleanup" : "vignette", fictional: true };
+                    const staged = { id: sceneId, templateId, kind: target ? "cleanup" : "vignette", label: target?.kind === "web" ? "Office fiction: Cleaning a spiderweb" : `Office fiction: ${template.label}`, participants: sceneParticipants, route, phase: route.length ? "walking" : "acting", startedAt: now, endsAt, fictional: true };
                     scenes.push(staged);
                     if (target) target.cleanupSceneId = staged.id;
-                    const cluster = clusters.get(first?.sessionId ?? "");
-                    if (first && cluster) {
-                        /** @type {Partial<Record<string, import('./world-types.js').PropKind>>} */
-                        const kinds = { coffee: "mug", tea: "mug", plant: "leaves", reading: "book", antics: "paper" };
-                        const kind = kinds[template.id];
-                        if (kind) leaveProp(kind, cluster, cluster.desks.get(first.id) ?? 0);
+                    const actor = template.id === "spider-web" ? [...agents.values()].find(eligible) : undefined;
+                    const cluster = clusters.get(actor?.sessionId ?? first?.sessionId ?? "");
+                    if (template.id === "spider-web" && actor && cluster) sceneActors.set(sceneId, spawnSpider(cluster, cluster.desks.get(actor.id) ?? 0));
+                    else if (first && cluster && !target) {
+                        const deskIndex = cluster.desks.get(first.id) ?? 0;
+                        if (template.id === "coffee" || template.id === "tea") {
+                            const desk = deskPosition(cluster, deskIndex);
+                            pendingProps.set(sceneId, { kind: "mug", location: { kind: "desk", spaceId: `space:${cluster.space}`, deskIndex, position: { x: desk.x + 18, y: desk.y + 12 } } });
+                        } else if (template.id === "reading") {
+                            pendingProps.set(sceneId, { kind: "book", location: nextZoneLocation("common-table") });
+                        } else if (template.id === "plant") {
+                            pendingProps.set(sceneId, { kind: "leaves", location: nextZoneLocation("plant-corner") });
+                        }
                     }
                     nextVignetteAt = now + cadence();
                 }
@@ -352,8 +521,10 @@ export function createOfficeWorld({ clock = Date.now, random = Math.random } = {
                 const cluster = abandoned[hauntOffset++ % abandoned.length];
                 const haunt = nextHaunt();
                 if (cluster && haunt) {
-                    effects.push({ id: `haunt:${++sequence}`, clusterId: `cluster:${cluster.session.id}`, spaceId: `space:${cluster.space}`, kind: haunt.kind, label: `Office fiction: ${haunt.label}`, position: origin(cluster.space), startedAt: now, endsAt: now + 4000, fictional: true });
-                    if (haunt.kind === "spider") leaveProp("web", cluster, null);
+                    const endsAt = now + 4000;
+                    effects.push({ id: `haunt:${++sequence}`, clusterId: `cluster:${cluster.session.id}`, spaceId: `space:${cluster.space}`, kind: haunt.kind, label: `Office fiction: ${haunt.label}`, position: origin(cluster.space), startedAt: now, endsAt, fictional: true });
+                    if (haunt.kind === "spider") spawnSpider(cluster, cluster.desks.values().next().value ?? 0);
+                    if (haunt.kind === "ghost") spawnGhost(cluster, endsAt);
                 }
                 nextHauntAt = now + cadence();
             }
@@ -367,13 +538,17 @@ export function createOfficeWorld({ clock = Date.now, random = Math.random } = {
                 const cluster = quietClusters[quietEffectOffset++ % quietClusters.length];
                 const ambience = nextQuietEffect();
                 if (cluster && ambience) {
-                    quietEffects.push({ id: `quiet:${++sequence}`, clusterId: `cluster:${cluster.session.id}`, spaceId: `space:${cluster.space}`, kind: ambience.kind, label: `Office fiction: ${ambience.label}`, position: origin(cluster.space), startedAt: now, endsAt: now + 4000, fictional: true });
-                    if (ambience.kind === "spider") leaveProp("web", cluster, null);
+                    const endsAt = now + 4000;
+                    quietEffects.push({ id: `quiet:${++sequence}`, clusterId: `cluster:${cluster.session.id}`, spaceId: `space:${cluster.space}`, kind: ambience.kind, label: `Office fiction: ${ambience.label}`, position: origin(cluster.space), startedAt: now, endsAt, fictional: true });
+                    if (ambience.kind === "spider") spawnSpider(cluster, cluster.desks.values().next().value ?? 0);
+                    if (ambience.kind === "ghost") spawnGhost(cluster, endsAt);
                 }
                 nextQuietEffectAt = now + cadence();
             }
         }
         if (preferences.dialogue) {
+            /** @type {OfficeAgent[]} */
+            const dueSpeakers = [];
             for (const agent of agents.values()) {
                 if (!dialogueVisible(agent)) {
                     dialogueDueAt.delete(agent.id);
@@ -385,10 +560,15 @@ export function createOfficeWorld({ clock = Date.now, random = Math.random } = {
                     dueAt = now + dialogueCadence();
                     dialogueDueAt.set(agent.id, dueAt);
                 }
-                if (now < dueAt) continue;
                 const cooldownUntil = (lastDialogueAt.get(agent.id) ?? -Infinity) + 15000;
-                if (now < cooldownUntil) dialogueDueAt.set(agent.id, cooldownUntil);
-                else speak(agent);
+                if (now < cooldownUntil) dialogueDueAt.set(agent.id, Math.max(dueAt, cooldownUntil));
+                else if (now >= dueAt) dueSpeakers.push(agent);
+            }
+            if (dueSpeakers.length && (nextGlobalDialogueAt === null || now >= nextGlobalDialogueAt)) {
+                const ordered = [...agents.keys()];
+                const previousIndex = ordered.indexOf(lastDialogueAgentId ?? "");
+                const nextSpeaker = dueSpeakers.find((agent) => ordered.indexOf(agent.id) > previousIndex) ?? dueSpeakers[0];
+                if (nextSpeaker) speak(nextSpeaker);
             }
         }
     }
@@ -400,10 +580,12 @@ export function createOfficeWorld({ clock = Date.now, random = Math.random } = {
         readClock();
         const dialogueWasEnabled = preferences.dialogue;
         const previouslyObserved = observed;
+        const previouslyEligible = new Set([...agents.values()].filter(eligible).map((agent) => agent.id));
         preferences = structuredClone(settings);
         providers = structuredClone(snapshot.providers);
         observed = new Set(snapshot.agents.map((agent) => agent.id));
         if (preferences.dialogue && !dialogueWasEnabled) {
+            nextGlobalDialogueAt = null;
             for (const agent of agents.values()) dialogueDueAt.set(agent.id, now + dialogueCadence());
         }
         const newcomers = snapshot.agents.filter((agent) => !agent.ended && (!agents.has(agent.id) || agents.get(agent.id)?.ended));
@@ -463,19 +645,21 @@ export function createOfficeWorld({ clock = Date.now, random = Math.random } = {
             const cluster = clusters.get(agent.sessionId);
             const index = cluster?.desks.get(agent.id);
             if (!cluster || index === undefined || !preferences.vignettes || !agent.connected || agent.freshness !== "fresh" || cluster.session.closed) continue;
-            const dirty = props.filter((prop) => prop.spaceId === `space:${cluster.space}` && prop.deskIndex === index && !prop.cleanupSceneId);
+            const dirty = props.filter((prop) => prop.location.kind === "desk" && prop.location.spaceId === `space:${cluster.space}` && prop.location.deskIndex === index && !prop.cleanupSceneId);
             if (!dirty.length) continue;
             const id = `scene:${++sequence}`;
-            scenes.push({ id, templateId: "desk-setup", kind: "desk-setup", label: "Setting up desk (office fiction)", participants: [agent.id], startedAt: now, endsAt: now + 4000, fictional: true });
+            scenes.push({ id, templateId: "desk-setup", kind: "desk-setup", label: "Setting up desk (office fiction)", participants: [agent.id], route: [], phase: "acting", startedAt: now, endsAt: now + 4000, fictional: true });
             for (const prop of dirty) prop.cleanupSceneId = id;
         }
+        for (const agent of agents.values()) if (!previouslyEligible.has(agent.id)) startOwnWebCleanup(agent);
+        for (const agent of agents.values()) startOwnWebCleanup(agent);
         advance();
     }
 
     /** @returns {WorldView} */
     function view() {
         /** @type {WorldView} */
-        const result = { now, fictionLabel: "Office fiction — not provider activity or collaboration", motion: { optional: true, reducedMotion: "static", flashing: false }, clusters: [], characters: [], props: [], scenes: [], dialogue: [], abandonedEffects: [], quietEffects: [] };
+        const result = { now, fictionLabel: "Office fiction — not provider activity or collaboration", motion: { optional: true, reducedMotion: "static", flashing: false }, clusters: [], characters: [], props: [], scenes: [], actors: [], dialogue: [], abandonedEffects: [], quietEffects: [] };
         for (const cluster of clusters.values()) {
             const session = cluster.session;
             const position = { x: cluster.space % 3 * 400, y: Math.floor(cluster.space / 3) * 300 };
@@ -491,15 +675,12 @@ export function createOfficeWorld({ clock = Date.now, random = Math.random } = {
                 const override = preferences.appearances[id];
                 const appearance = override ? { ...override, palette: /^#[\da-f]{6}$/i.test(override.palette) ? override.palette : base.palette } : base;
                 const scene = scenes.find((scene) => scene.participants.includes(id));
-                const host = clusters.get(agents.get(scene?.participants[0] ?? "")?.sessionId ?? "");
-                const sceneOrigin = host ? { x: host.space % 3 * 400, y: Math.floor(host.space / 3) * 300 } : position;
-                const cleaning = props.find((prop) => prop.cleanupSceneId === scene?.id);
-                const scenePosition = scene?.kind === "desk-setup" || agent.state === "working" && !agent.ended ? deskPosition : cleaning ? cleaning.position : { x: sceneOrigin.x + 160 + (scene?.participants.indexOf(id) ?? 0) * 30, y: sceneOrigin.y + 40 };
                 const commonPosition = { x: position.x + 160, y: position.y + 40 };
-                result.characters.push({ id, agentId: id, sessionId: agent.sessionId, clusterId: `cluster:${session.id}`, spaceId: `space:${cluster.space}`, deskId: `space:${cluster.space}:desk:${deskIndex}`, deskIndex, position: scene ? scenePosition : agent.ended ? commonPosition : deskPosition, deskPosition, provider: agent.provider, providerName: agent.name, providerRole: agent.role, state: agent.state, ended: agent.ended, endedAt: agent.endedAt, waitingReason: agent.waitingReason, freshness: agent.freshness, connected: agent.connected, observed: observed.has(id), appearance, voiceFlavor: VOICES[hash(id) % 5] ?? "calm", pose: scene ? scene.kind === "vignette" ? "vignette" : scene.kind : agent.ended ? "rest" : !observed.has(id) ? "neutral" : completionUntil.has(id) && !agent.ended && agent.connected && agent.freshness === "fresh" && agent.state !== "waiting" && agent.state !== "failed" && agent.state !== "unknown" ? "completion" : factualPose(agent), statusLabel: agent.ended ? "Ended" : agent.state === "waiting" && agent.waitingReason === "approval" ? "Waiting for approval" : agent.state, sceneId: scene?.id ?? null, sceneLabel: scene?.label ?? null });
+                result.characters.push({ id, agentId: id, sessionId: agent.sessionId, clusterId: `cluster:${session.id}`, spaceId: `space:${cluster.space}`, deskId: `space:${cluster.space}:desk:${deskIndex}`, deskIndex, position: scene ? agent.ended ? commonPosition : deskPosition : agent.ended ? commonPosition : deskPosition, deskPosition, provider: agent.provider, providerName: agent.name, providerRole: agent.role, state: agent.state, ended: agent.ended, endedAt: agent.endedAt, waitingReason: agent.waitingReason, freshness: agent.freshness, connected: agent.connected, observed: observed.has(id), appearance, voiceFlavor: VOICES[hash(id) % 5] ?? "calm", pose: scene ? scene.kind === "vignette" ? "vignette" : scene.kind : agent.ended ? "rest" : !observed.has(id) ? "neutral" : completionUntil.has(id) && !agent.ended && agent.connected && agent.freshness === "fresh" && agent.state !== "waiting" && agent.state !== "failed" && agent.state !== "unknown" ? "completion" : factualPose(agent), statusLabel: agent.ended ? "Ended" : agent.state === "waiting" && agent.waitingReason === "approval" ? "Waiting for approval" : agent.state, sceneId: scene?.id ?? null, sceneLabel: scene?.label ?? null });
             }
         }
         result.scenes = scenes;
+        result.actors = actors;
         result.props = props;
         result.dialogue = dialogue;
         result.abandonedEffects = effects;

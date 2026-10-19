@@ -8,10 +8,42 @@ const $ = (id) => {
 const select = /** @type {HTMLSelectElement} */ ($("scenario-select"));
 const frameSelect = /** @type {HTMLSelectElement} */ ($("frame-select"));
 const list = $("scenario-list");
+const frameList = $("frame-list");
 const frame = /** @type {HTMLIFrameElement} */ ($("office-preview"));
+const framePrevious = /** @type {HTMLButtonElement} */ ($("frame-previous"));
+const frameNext = /** @type {HTMLButtonElement} */ ($("frame-next"));
+const playFrames = /** @type {HTMLButtonElement} */ ($("play-frames"));
 const viewport = /** @type {HTMLSelectElement} */ ($("viewport"));
 let scenarios = [];
 let selected = 0;
+let playbackToken = 0;
+const frameDelayMs = 1500;
+
+function stopPlayback() {
+  playbackToken += 1;
+  playFrames.textContent = "Play frames";
+  playFrames.setAttribute("aria-pressed", "false");
+}
+
+function updateFrameNavigation(scenario, frameIndex) {
+  const hasFrames = scenario.frames.length > 0;
+  framePrevious.disabled = !hasFrames || frameIndex <= 0;
+  frameNext.disabled = !hasFrames || frameIndex >= scenario.frames.length - 1;
+  playFrames.disabled = scenario.frames.length < 2;
+  frameList.replaceChildren();
+  scenario.frames.forEach((namedFrame, index) => {
+    const item = document.createElement("li");
+    const button = document.createElement("button");
+    button.type = "button";
+    button.dataset.frame = namedFrame.id;
+    button.textContent = `${index + 1}. ${namedFrame.id} · ${namedFrame.covers.join(" / ")}`;
+    if (index === frameIndex) {
+      button.setAttribute("aria-current", "step");
+    }
+    item.append(button);
+    frameList.append(item);
+  });
+}
 
 async function loadScenarios() {
   const response = await fetch("/api/scenarios");
@@ -65,7 +97,9 @@ async function showScenario(index, frameId) {
     }
   }
   const namedFrame = scenario.frames.find((entry) => entry.id === frameId) ?? scenario.frames[0];
+  const frameIndex = namedFrame ? scenario.frames.indexOf(namedFrame) : -1;
   frameSelect.value = namedFrame?.id ?? "";
+  updateFrameNavigation(scenario, frameIndex);
   $("current-scenario").textContent = `${scenario.id} · ${scenario.title}${namedFrame ? ` · ${namedFrame.id}` : " · default state"}`;
   for (const link of list.querySelectorAll("a[data-scenario]")) {
     if (link instanceof Element) link.setAttribute("aria-current", link.dataset.scenario === scenario.id ? "page" : "false");
@@ -95,18 +129,61 @@ async function showScenario(index, frameId) {
   if (namedFrame?.expected.reducedMotion ?? scenario.reducedMotion) $("player-status").textContent += " Reduced motion is active for this named frame.";
 }
 
-select.addEventListener("change", () => { void showScenario(scenarios.findIndex((scenario) => scenario.id === select.value)); });
-frameSelect.addEventListener("change", () => { void showScenario(selected, frameSelect.value); });
+select.addEventListener("change", () => { stopPlayback(); void showScenario(scenarios.findIndex((scenario) => scenario.id === select.value)); });
+frameSelect.addEventListener("change", () => { stopPlayback(); void showScenario(selected, frameSelect.value); });
+framePrevious.addEventListener("click", () => {
+  stopPlayback();
+  const scenario = scenarios[selected];
+  const index = scenario?.frames.findIndex((entry) => entry.id === frameSelect.value) ?? 0;
+  if (index > 0) void showScenario(selected, scenario.frames[index - 1].id);
+});
+frameNext.addEventListener("click", () => {
+  stopPlayback();
+  const scenario = scenarios[selected];
+  const index = scenario?.frames.findIndex((entry) => entry.id === frameSelect.value) ?? -1;
+  if (scenario && index < scenario.frames.length - 1) void showScenario(selected, scenario.frames[index + 1].id);
+});
+frameList.addEventListener("click", (event) => {
+  if (!(event.target instanceof Element)) return;
+  const button = event.target.closest("button[data-frame]");
+  if (!(button instanceof HTMLButtonElement)) return;
+  stopPlayback();
+  void showScenario(selected, button.dataset.frame);
+});
+playFrames.addEventListener("click", () => {
+  if (playFrames.getAttribute("aria-pressed") === "true") {
+    stopPlayback();
+    return;
+  }
+  const token = ++playbackToken;
+  playFrames.textContent = "Stop frames";
+  playFrames.setAttribute("aria-pressed", "true");
+  const playNext = async () => {
+    if (token !== playbackToken) return;
+    const scenario = scenarios[selected];
+    const index = scenario?.frames.findIndex((entry) => entry.id === frameSelect.value) ?? -1;
+    if (!scenario || index >= scenario.frames.length - 1) {
+      stopPlayback();
+      return;
+    }
+    await new Promise((resolve) => window.setTimeout(resolve, frameDelayMs));
+    if (token !== playbackToken) return;
+    await showScenario(selected, scenario.frames[index + 1].id);
+    if (token === playbackToken) void playNext();
+  };
+  void playNext();
+});
 list.addEventListener("click", (event) => {
   if (!(event.target instanceof Element)) return;
   const link = event.target.closest("a[data-scenario]");
   if (!link || !(link instanceof HTMLAnchorElement)) return;
   event.preventDefault();
+  stopPlayback();
   void showScenario(scenarios.findIndex((scenario) => scenario.id === link.dataset.scenario));
 });
-$("previous").addEventListener("click", () => { void showScenario((selected + scenarios.length - 1) % scenarios.length); });
-$("next").addEventListener("click", () => { void showScenario((selected + 1) % scenarios.length); });
-$("reset").addEventListener("click", () => { void showScenario(selected, frameSelect.value); });
+$("previous").addEventListener("click", () => { stopPlayback(); void showScenario((selected + scenarios.length - 1) % scenarios.length); });
+$("next").addEventListener("click", () => { stopPlayback(); void showScenario((selected + 1) % scenarios.length); });
+$("reset").addEventListener("click", () => { stopPlayback(); void showScenario(selected, frameSelect.value); });
 viewport.addEventListener("change", () => { frame.style.width = `${viewport.value}px`; });
 $("copy-url").addEventListener("click", async (event) => {
   const button = event.currentTarget;

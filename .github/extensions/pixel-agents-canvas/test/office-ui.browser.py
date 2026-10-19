@@ -58,6 +58,9 @@ class OfficeBrowserTests(unittest.TestCase):
                 elif path in {"/office-client.js", "/office-world.js", "/office.css"}:
                     body = (SOURCE / path[1:]).read_bytes()
                     mime = "text/css" if path.endswith(".css") else "text/javascript"
+                elif path.startswith("/assets/") and path.endswith(".svg"):
+                    body = (SOURCE.parent / "assets" / Path(path).name).read_bytes()
+                    mime = "image/svg+xml"
                 else:
                     self.send_error(404)
                     return
@@ -134,6 +137,349 @@ class OfficeBrowserTests(unittest.TestCase):
     def tearDown(self):
         self.page.close()
 
+    def test_semantic_scene_routes_use_shared_zone_anchors_and_keep_one_character_node(self):
+        self.page.emulate_media(reduced_motion="no-preference")
+        self.page.set_viewport_size({"width": 390, "height": 1100})
+        self.page.evaluate("window.scrollTo(0, 0)")
+        self.page.wait_for_timeout(50)
+        original = self.page.locator("button.character[data-agent='agent-0']")
+        original.evaluate("element => window.originalCharacterNode = element")
+        desk = original.locator(".pixel-person").bounding_box()
+        desk_scroll = self.page.evaluate("window.scrollY")
+        self.page.evaluate("""() => {
+            const {view} = uiTest;
+            const character = view.characters.find(item => item.agentId === 'agent-0');
+            view.scenes = [{id:'travel', templateId:'coffee', kind:'vignette', label:'Office fiction: Coffee',
+                participants:['agent-0'], route:[{kind:'zone', zoneId:'coffee-station'}], phase:'walking',
+                startedAt:view.now, endsAt:view.now + 10000, fictional:true}];
+            character.sceneId = 'travel';
+            uiTest.drawOffice(document, uiTest.state, null, view);
+        }""")
+        path = json.loads(original.get_attribute("data-walk-path"))
+        self.assertGreater(len(path), 6)
+        cluster = self.page.locator("[data-session=session-0]").bounding_box()
+        aisle = self.page.locator("#office-aisle").bounding_box()
+        exits = [
+            {"x": cluster["x"] + cluster["width"] / 2, "y": cluster["y"] + cluster["height"] + 40},
+            {"x": cluster["x"] - 40, "y": cluster["y"] + cluster["height"] / 2},
+            {"x": cluster["x"] + cluster["width"] + 40, "y": cluster["y"] + cluster["height"] / 2},
+        ]
+        self.assertTrue(any(min(abs(point["x"] - exit["x"]) + abs(point["y"] - exit["y"]) for exit in exits) < 3 for point in path))
+        self.assertTrue(any(abs(point["y"] - (aisle["y"] + aisle["height"] / 2)) < 16 for point in path))
+        obstacles = [self.page.locator(".office-wall").bounding_box()]
+        obstacles.extend(node.bounding_box() for node in self.page.locator(".session-cluster[data-session]").all() if node.get_attribute("data-session") != "session-0")
+        obstacles.extend(node.bounding_box() for node in self.page.locator(".pixel-desk").all() if node.evaluate("element => !element.closest('[data-station]')?.dataset.station.includes('agent-0')"))
+        for index, point in enumerate(path[2:], start=2):
+            for obstacle in obstacles:
+                self.assertFalse(self.path_point_overlaps(point, obstacle), f"walk route point {index} intersects an obstacle: {point}, {obstacle}")
+        self.page.evaluate("""() => {
+            uiTest.view.scenes[0].phase='acting';
+            uiTest.drawOffice(document, uiTest.state, null, uiTest.view);
+        }""")
+        last = path[-1]
+        person = original.locator(".pixel-person").bounding_box()
+        self.assertLess(abs(person["x"] + person["width"] / 2 - last["x"]), 3, f"person={person}, last={last}, first={path[0]}, desk={desk}")
+        self.assertLess(abs(person["y"] + person["height"] / 2 - last["y"]), 3, f"person={person}, last={last}, first={path[0]}, desk={desk}")
+        for zone in ("common-table", "plant-corner", "bookshelf", "window"):
+            self.page.evaluate("""zone => {
+                uiTest.view.scenes[0].route[0].zoneId = zone;
+                uiTest.view.scenes[0].phase='acting';
+                uiTest.drawOffice(document, uiTest.state, null, uiTest.view);
+            }""", zone)
+            route_text = original.get_attribute("data-walk-path")
+            self.assertTrue(route_text, f"zone={zone} error={original.get_attribute('data-walk-error')} candidates={original.get_attribute('data-walk-candidates')} debug={self.page.locator('#office-floor').get_attribute('data-walk-debug')}")
+            approach = json.loads(route_text)[-1]
+            station = self.page.locator(f"[data-zone={zone}]").bounding_box()
+            self.assertTrue(station["x"] - 50 <= approach["x"] <= station["x"] + station["width"] + 50, zone)
+        self.assertTrue(original.evaluate("element => window.originalCharacterNode === element"))
+        self.page.evaluate("""() => {
+            uiTest.view.scenes[0].templateId='paper-hat';
+            uiTest.drawOffice(document, uiTest.state, null, uiTest.view);
+        }""")
+        self.assertEqual(self.page.locator("button.character[data-agent='agent-0'] > .scene-hat").count(), 1)
+        self.assertIn("paper hat", self.page.locator(".scene-hat").get_attribute("aria-label").casefold())
+        self.page.evaluate("""() => {
+            uiTest.view.now = uiTest.view.scenes[0].endsAt;
+            uiTest.view.scenes[0].phase='returning';
+            uiTest.drawOffice(document, uiTest.state, null, uiTest.view);
+        }""")
+        self.page.wait_for_timeout(750)
+        person_node = original.locator(".pixel-person")
+        returned = person_node.bounding_box()
+        route_state = person_node.evaluate("element => ({translate:getComputedStyle(element).translate, animation:element.getAnimations().map(item => ({currentTime:item.currentTime,playState:item.playState,timing:item.effect?.getComputedTiming(),id:item.id})), path:element.closest('button').dataset.walkPath})")
+        scroll = self.page.evaluate("window.scrollY")
+        self.assertAlmostEqual(returned["x"], desk["x"], delta=1, msg=f"returned={returned}, desk={desk}, route={route_state}")
+        self.assertAlmostEqual(returned["y"] + scroll, desk["y"] + desk_scroll, delta=1)
+        self.page.evaluate("""() => {
+            uiTest.view.scenes=[];
+            uiTest.view.characters[0].sceneId=null;
+            uiTest.drawOffice(document, uiTest.state, null, uiTest.view);
+        }""")
+        self.assertEqual(self.page.locator(".scene-hat").count(), 0)
+        self.assertEqual(self.page.locator("button.character[data-agent='agent-0']").count(), 1)
+
+    def test_walkable_routes_use_room_exit_and_avoid_walls_rooms_and_furniture(self):
+        self.page.emulate_media(reduced_motion="no-preference")
+        for width in (1440, 820, 390):
+            with self.subTest(width=width):
+                self.page.set_viewport_size({"width": width, "height": 1200})
+                self.page.wait_for_timeout(50)
+                self.page.evaluate("""() => {
+                    const {view} = uiTest;
+                    view.scenes = [{id:'walk-test',templateId:'coffee',kind:'vignette',label:'Office fiction: Coffee',
+                        participants:['agent-0'],route:[{kind:'zone',zoneId:'coffee-station'}],phase:'walking',
+                        startedAt:view.now,endsAt:view.now+6000,fictional:true}];
+                    view.now += 1000;
+                    view.characters[0].sceneId='walk-test';
+                    uiTest.drawOffice(document,uiTest.state,null,view);
+                }""")
+                character = self.page.locator("button.character[data-agent='agent-0']")
+                route_text = character.get_attribute("data-walk-path")
+                self.assertTrue(route_text, f"no safe walk path at {width}px")
+                points = json.loads(route_text)
+                self.assertGreater(len(points), 6)
+                room = self.page.locator(".session-cluster[data-session='session-0']").bounding_box()
+                exits = [
+                    {"x": room["x"] + room["width"] / 2, "y": room["y"] + room["height"] + 40},
+                    {"x": room["x"] - 40, "y": room["y"] + room["height"] / 2},
+                    {"x": room["x"] + room["width"] + 40, "y": room["y"] + room["height"] / 2},
+                ]
+                room_exit = min(range(len(points)), key=lambda index: min(abs(points[index]["x"] - exit["x"]) + abs(points[index]["y"] - exit["y"]) for exit in exits))
+                self.assertLess(min(abs(points[room_exit]["x"] - exit["x"]) + abs(points[room_exit]["y"] - exit["y"]) for exit in exits), 3)
+                aisle = self.page.locator("#office-aisle").bounding_box()
+                self.assertTrue(any(abs(point["y"] - aisle["y"] - aisle["height"] / 2) < 16 for point in points))
+                blocked = [("wall", self.page.locator(".office-wall").bounding_box())]
+                blocked += [("other room", self.page.locator(".session-cluster[data-session]").nth(index).bounding_box()) for index in range(self.page.locator(".session-cluster[data-session]").count()) if self.page.locator(".session-cluster[data-session]").nth(index).get_attribute("data-session") != "session-0"]
+                blocked += [(node.get_attribute("class") or node.get_attribute("id") or node.evaluate("el=>el.tagName"), node.bounding_box()) for node in self.page.locator(".pixel-desk,.desk-chair,.cluster-decor .decor-divider,.cluster-decor .decor-art,.common-table-art,.coffee-station-art,.table-chair,#zone-waste-bin,.floor-plant-art").all()]
+                for index in range(room_exit, len(points) - 1):
+                    start, end = points[index], points[index + 1]
+                    distance = max(abs(end["x"] - start["x"]), abs(end["y"] - start["y"]))
+                    samples = max(1, int(distance / 8))
+                    for sample in range(samples + 1):
+                        fraction = sample / samples
+                        point = {"x": start["x"] + (end["x"] - start["x"]) * fraction, "y": start["y"] + (end["y"] - start["y"]) * fraction}
+                        sprite_box = {"x": point["x"] - 17, "y": point["y"] - 26, "width": 34, "height": 52}
+                        self.assertTrue(all(not self.boxes_overlap(sprite_box, obstacle) for _, obstacle in blocked), f"route clips obstacle at {width}px: {point}; hits={[name for name, obstacle in blocked if self.boxes_overlap(sprite_box, obstacle)]}")
+
+    def test_furniture_uses_anchored_nonoverlapping_slots(self):
+        for width in (1440, 820, 390):
+            with self.subTest(width=width):
+                self.page.set_viewport_size({"width": width, "height": 1200})
+                seats = self.page.locator(".table-chair")
+                desks = self.page.locator(".desk-station")
+                chairs = self.page.locator(".desk-chair")
+                self.assertEqual(seats.count(), 4)
+                self.assertEqual(chairs.count(), desks.count())
+                self.assertEqual(self.page.locator("#zone-waste-bin").count(), 1)
+                self.assertEqual(self.page.locator(".cluster-decor .decor-plant, .cluster-decor .decor-chair, .cluster-decor .decor-bin").count(), 0)
+                tabletop = self.page.locator("#zone-common-table").bounding_box()
+                for index in range(seats.count()):
+                    seat = seats.nth(index).bounding_box()
+                    self.assertFalse(self.boxes_overlap(tabletop, seat), f"table seat {index} overlaps tabletop at {width}px")
+                for cluster in self.page.locator(".session-cluster[data-session]").all():
+                    station_boxes = [station.bounding_box() for station in cluster.locator(".desk-station").all()]
+                    for prop in cluster.locator(".cluster-decor .decor-divider, .cluster-decor .decor-art").all():
+                        prop_box = prop.bounding_box()
+                        self.assertTrue(all(not self.boxes_overlap(prop_box, station_box) for station_box in station_boxes), f"cluster rail overlaps a desk at {width}px")
+
+    @staticmethod
+    def boxes_overlap(left, right):
+        return left["x"] < right["x"] + right["width"] and left["x"] + left["width"] > right["x"] and left["y"] < right["y"] + right["height"] and left["y"] + left["height"] > right["y"]
+
+    @staticmethod
+    def path_point_overlaps(point, obstacle):
+        return obstacle["x"] <= point["x"] <= obstacle["x"] + obstacle["width"] and obstacle["y"] <= point["y"] <= obstacle["y"] + obstacle["height"]
+
+    def test_original_pixel_assets_load_and_global_zones_have_stable_anchors(self):
+        self.assertEqual(self.page.locator("[data-zone=common-table]").count(), 1)
+        self.assertEqual(self.page.locator("[data-zone=coffee-station]").count(), 1)
+        self.assertEqual(self.page.locator("[data-zone=desk-west]").count(), 1)
+        self.assertEqual(self.page.locator("[data-zone=desk-east]").count(), 1)
+        clusters = self.page.locator(".session-cluster[data-session]")
+        self.assertNotEqual(clusters.nth(0).get_attribute("class"), clusters.nth(1).get_attribute("class"))
+        self.assertEqual(clusters.nth(0).locator(".cluster-decor img").count(), 2)
+        styles = [next(token for token in clusters.nth(index).get_attribute("class").split() if token.startswith("workstation-style-")) for index in range(clusters.count())]
+        self.assertGreaterEqual(len(set(styles)), 2)
+        before = [clusters.nth(index).get_attribute("class") for index in range(clusters.count())]
+        self.page.evaluate("uiTest.drawOffice(document, uiTest.state, null, uiTest.view)")
+        self.assertEqual(before, [self.page.locator(".session-cluster[data-session]").nth(index).get_attribute("class") for index in range(clusters.count())])
+        self.page.evaluate("""() => {
+            uiTest.state.snapshot.sessions.forEach((session, index) => {
+                session.provider = index % 2 ? 'Copilot' : 'Codex';
+                session.title = `different title ${index}`;
+            });
+            uiTest.drawOffice(document, uiTest.state, null, uiTest.view);
+        }""")
+        self.assertEqual(styles, [next(token for token in self.page.locator(".session-cluster[data-session]").nth(index).get_attribute("class").split() if token.startswith("workstation-style-")) for index in range(clusters.count())])
+        for zone in ("plant-corner", "bookshelf", "window"):
+            self.assertEqual(self.page.locator(f"[data-zone={zone}]").count(), 1)
+        self.assertTrue(self.page.evaluate("Array.from(document.querySelectorAll('.office-wall img, .floor-decor img, .common-area img')).every(image => image.complete && image.naturalWidth > 0)"))
+        self.assertEqual(self.page.locator(".common-area .coffee-table, .common-area .coffee-bar").count(), 0)
+
+    def test_reading_coffee_action_cues_and_scene_cleanup_are_visual_only(self):
+        self.page.evaluate("""() => {
+            const {view} = uiTest;
+            const character = view.characters.find(item => item.agentId === 'agent-0');
+            view.scenes = [{id:'reading-scene', templateId:'reading', kind:'vignette', label:'Office fiction: Reading',
+                participants:['agent-0'], route:[{kind:'zone', zoneId:'common-table'}], phase:'acting',
+                startedAt:view.now, endsAt:view.now+10000, fictional:true}];
+            character.sceneId='reading-scene';
+            uiTest.drawOffice(document, uiTest.state, null, view);
+        }""")
+        reading_prop = self.page.locator("#zone-props [data-scene-visual=reading-scene]")
+        self.assertEqual(reading_prop.locator("img").get_attribute("src").split("/")[-1], "book.svg")
+        self.assertTrue(self.page.locator("button.character[data-agent='agent-0']").evaluate("element => element.classList.contains('reading-at-table')"))
+        self.assertEqual(self.page.locator(".scene-badge").count(), 0)
+        self.page.evaluate("""() => {
+            const {view} = uiTest;
+            view.scenes = [{id:'coffee-scene', templateId:'coffee', kind:'vignette', label:'Office fiction: Coffee',
+                participants:['agent-0'], route:[{kind:'zone', zoneId:'coffee-station'}], phase:'acting',
+                startedAt:view.now, endsAt:view.now+10000, fictional:true}];
+            view.characters[0].sceneId='coffee-scene';
+            uiTest.drawOffice(document, uiTest.state, null, view);
+        }""")
+        steam = self.page.locator("#zone-props [data-scene-visual=coffee-scene]")
+        self.assertEqual(steam.locator("img").get_attribute("src").split("/")[-1], "coffee-steam.svg")
+        self.page.evaluate("""() => {
+            uiTest.view.scenes[0].phase='returning';
+            uiTest.drawOffice(document, uiTest.state, null, uiTest.view);
+        }""")
+        self.assertEqual(self.page.locator("#zone-props [data-scene-visual=coffee-scene]").count(), 0)
+        self.assertEqual(self.page.locator("button.character[data-agent='agent-0'] > .scene-carrying img").get_attribute("src").split("/")[-1], "mug.svg")
+        self.page.evaluate("""() => {
+            uiTest.view.scenes=[];
+            uiTest.view.characters[0].sceneId=null;
+            uiTest.drawOffice(document, uiTest.state, null, uiTest.view);
+        }""")
+        self.assertEqual(self.page.locator(".scene-action-prop, .scene-carrying").count(), 0)
+        self.assertFalse(self.page.locator("button.character[data-agent='agent-0']").evaluate("element => element.classList.contains('reading-at-table')"))
+        self.page.emulate_media(reduced_motion="reduce")
+        self.page.evaluate("""() => {
+            const {view} = uiTest;
+            const cluster = view.clusters[0];
+            view.actors = [{id:'static-spider', kind:'spider', spaceId:cluster.spaceId, position:{x:52,y:62},
+                route:[{x:60,y:62},{x:100,y:62}], startedAt:view.now, endsAt:view.now+10000, fictional:true}];
+            view.scenes = [{id:'still-scene', templateId:'coffee', kind:'vignette', label:'Office fiction: Coffee',
+                participants:['agent-0'], route:[{kind:'zone', zoneId:'coffee-station'}], phase:'walking',
+                startedAt:view.now, endsAt:view.now+10000, fictional:true}];
+            view.characters[0].sceneId='still-scene';
+            uiTest.drawOffice(document, uiTest.state, null, view);
+        }""")
+        person = self.page.locator("button.character[data-agent='agent-0'] > .pixel-person")
+        spider = self.page.locator(".office-actor")
+        first_person = person.bounding_box()
+        first_spider = spider.bounding_box()
+        self.page.evaluate("""() => {
+            uiTest.view.now += 5000;
+            uiTest.drawOffice(document, uiTest.state, null, uiTest.view);
+        }""")
+        self.assertEqual(person.bounding_box(), first_person)
+        self.assertEqual(spider.bounding_box(), first_spider)
+        self.page.emulate_media(reduced_motion="no-preference")
+
+    def test_global_props_and_spider_actors_render_once_without_legacy_spider_duplication(self):
+        self.page.evaluate("""() => {
+            const {view} = uiTest;
+            const cluster = view.clusters[0];
+            view.props.push({id:'shared-mug', kind:'mug', location:{kind:'zone', zoneId:'common-table', slot:0},
+                createdAt:view.now, cleanupSceneId:null, fictional:true});
+            view.actors = [
+                {id:'crossing-spider', kind:'spider', spaceId:cluster.spaceId,
+                    position:{x:40,y:70}, route:[{x:80,y:70}], startedAt:view.now, endsAt:view.now+10000, fictional:true},
+                {id:'room-ghost', kind:'ghost', clusterId:cluster.id, spaceId:cluster.spaceId,
+                    position:{x:cluster.position.x+180,y:cluster.position.y+240}, route:[{x:cluster.position.x+180,y:cluster.position.y+240},{x:cluster.position.x+250,y:cluster.position.y+240}],
+                    startedAt:view.now, endsAt:view.now+10000, fictional:true},
+            ];
+            view.quietEffects = [{id:'legacy-spider', clusterId:cluster.id, spaceId:cluster.spaceId, kind:'spider',
+                label:'Old effect compatibility', position:{x:40,y:70}, startedAt:view.now, endsAt:view.now+10000, fictional:true}];
+            uiTest.drawOffice(document, uiTest.state, null, view);
+        }""")
+        self.assertEqual(self.page.locator("#zone-props [data-prop=shared-mug]").count(), 1)
+        self.assertEqual(self.page.locator(".session-cluster .office-actor img[src='/assets/spider.svg']").count(), 1)
+        self.assertEqual(self.page.locator(".session-cluster .office-actor img[src='/assets/ghost.svg']").count(), 1)
+        ghost = self.page.locator(".session-cluster .office-actor img[src='/assets/ghost.svg']").bounding_box()
+        room = self.page.locator(".session-cluster[data-session=session-0]").bounding_box()
+        self.assertTrue(room["x"] <= ghost["x"] <= room["x"] + room["width"] - ghost["width"])
+        self.assertTrue(room["y"] <= ghost["y"] <= room["y"] + room["height"] - ghost["height"])
+        self.assertEqual(self.page.locator(".session-cluster .quiet-effect").count(), 0)
+        prop = self.page.locator("#zone-props [data-prop=shared-mug]").bounding_box()
+        table = self.page.locator("[data-zone=common-table]").bounding_box()
+        self.assertLess(abs(prop["x"] + prop["width"] / 2 - table["x"] - table["width"] / 2), 25)
+        self.assertEqual(self.page.locator("button.character[data-agent=agent-0]").count(), 1)
+
+    def test_screen_flicker_uses_existing_monitor_and_ghost_roams_room(self):
+        self.page.emulate_media(reduced_motion="no-preference")
+        self.page.evaluate("""() => {
+            uiTest.state.snapshot.agents.push({...uiTest.state.snapshot.agents[0],id:'extra-monitor',name:'Extra monitor fixture'});
+            const {view} = uiTest;
+            const room = view.clusters[0];
+            const ghost = {id:'roaming-ghost',kind:'ghost',clusterId:room.id,spaceId:room.spaceId,
+                position:{x:room.position.x+80,y:room.position.y+230},
+                route:[{x:room.position.x+80,y:room.position.y+230},{x:room.position.x+280,y:room.position.y+260}],
+                startedAt:view.now,endsAt:view.now+10000,fictional:true};
+            view.actors=[ghost];
+            view.quietEffects=[{id:'screen',kind:'screen-flicker',clusterId:room.id,spaceId:room.spaceId,
+                label:'A sleeping screen glows',position:{x:0,y:0},startedAt:view.now,endsAt:view.now+10000,fictional:true},
+                {id:'ghost-label',kind:'ghost',clusterId:room.id,spaceId:room.spaceId,label:'Ghost ambience',
+                    position:ghost.position,startedAt:view.now,endsAt:view.now+10000,fictional:true}];
+            uiTest.drawOffice(document,uiTest.state,null,view);
+        }""")
+        cluster = self.page.locator(".session-cluster[data-session='session-0']")
+        monitors = cluster.locator(".monitor")
+        self.assertEqual(monitors.count(), 2)
+        self.assertEqual(cluster.locator(".monitor.screen-flicker").count(), 1)
+        self.assertEqual(cluster.locator(".quiet-effect,.abandoned-note").count(), 0)
+        self.assertEqual(self.page.locator("img[src='/assets/screen-glow.svg']").count(), 0)
+        ghost = cluster.locator("[data-world-actor=roaming-ghost]")
+        self.assertEqual(ghost.count(), 1)
+        start = ghost.bounding_box()
+        self.page.evaluate("""() => {
+            uiTest.view.actors[0].position = uiTest.view.actors[0].route[1];
+            uiTest.view.now += 3000;
+            uiTest.drawOffice(document,uiTest.state,null,uiTest.view);
+        }""")
+        self.page.wait_for_timeout(1700)
+        end = ghost.bounding_box()
+        self.assertGreater(abs(end["x"]-start["x"]) + abs(end["y"]-start["y"]), 40)
+        bounds = cluster.bounding_box()
+        self.assertTrue(bounds["x"] <= end["x"] <= bounds["x"]+bounds["width"]-end["width"])
+        self.assertTrue(bounds["y"] <= end["y"] <= bounds["y"]+bounds["height"]-end["height"])
+        self.page.emulate_media(reduced_motion="reduce")
+        self.page.evaluate("uiTest.drawOffice(document,uiTest.state,null,uiTest.view)")
+        static = ghost.bounding_box()
+        self.page.evaluate("""() => {
+            uiTest.view.actors[0].position={x:240,y:260};
+            uiTest.view.now += 1000;
+            uiTest.drawOffice(document,uiTest.state,null,uiTest.view);
+        }""")
+        self.assertEqual(ghost.bounding_box(), static)
+        self.page.evaluate("uiTest.view.quietEffects=[];uiTest.drawOffice(document,uiTest.state,null,uiTest.view)")
+        self.assertEqual(cluster.locator(".monitor.screen-flicker").count(), 0)
+
+    def test_agent_badges_are_state_only_and_meet_wcag_aa_contrast(self):
+        self.assertEqual(self.page.locator(".character-provider, button.character > .freshness").count(), 0)
+        self.assertEqual(self.page.locator(".roster-identity > span:not(.roster-session), .roster-state .freshness").count(), 0)
+        ratios = self.page.evaluate("""() => {
+            const parse = value => value.match(/[\\d.]+/g).slice(0, 3).map(Number).map(channel => {
+                const normalized = channel / 255;
+                return normalized <= 0.04045 ? normalized / 12.92 : ((normalized + 0.055) / 1.055) ** 2.4;
+            }).reduce((sum, channel, index) => sum + channel * [0.2126, 0.7152, 0.0722][index], 0);
+            const ratio = (foreground, background) => {
+                const values = [parse(foreground), parse(background)].sort((a, b) => b - a);
+                return (values[0] + 0.05) / (values[1] + 0.05);
+            };
+            const chip = document.querySelector('.status-chip');
+            return ['idle','working','waiting','failed','unknown','completed'].map(state => {
+                chip.className = `status-chip ${state}`;
+                const style = getComputedStyle(chip);
+                return ratio(style.color, style.backgroundColor);
+            });
+        }""")
+        self.assertTrue(all(value >= 4.5 for value in ratios), ratios)
+        self.page.locator("button.character[data-agent='agent-0']").click()
+        self.assertTrue(self.page.locator("#details .provider-tag").is_visible())
+        self.assertIn("fresh · connected", self.page.locator("#details").inner_text())
+
     def test_visible_copy_is_factual_and_keeps_controls_available(self):
         visible = self.page.locator("body").inner_text().casefold()
         for phrase in ("read-only dashboard", "office decor & scenes are fiction", "fictional little office",
@@ -142,7 +488,7 @@ class OfficeBrowserTests(unittest.TestCase):
         self.assertIn("local alias", visible)
         self.assertIn("codex", visible)
         self.assertIn("idle", visible)
-        self.assertIn("fresh · connected", visible)
+        self.assertNotIn("fresh · connected", visible)
         self.assertNotIn("observed agent", visible)
         self.assertTrue(self.page.locator("#show-ended").is_visible())
         self.assertTrue(self.page.locator("#vignettes").is_visible())
@@ -156,26 +502,29 @@ class OfficeBrowserTests(unittest.TestCase):
             uiTest.view.clusters[0] = {...uiTest.view.clusters[0], dimmed:true, titleHidden:true, title:null, motifs:[]};
             uiTest.view.quietEffects = [{id:'quiet-effect', clusterId:'cluster:session-0', spaceId:'space:0', kind:'ghost',
                 label:'Office fiction: A soft shadow', position:{x:20,y:30}, startedAt:1000, endsAt:5000, fictional:true}];
+            uiTest.view.actors = [{id:'quiet-ghost', kind:'ghost', clusterId:'cluster:session-0', spaceId:'space:0',
+                position:{x:80,y:240}, route:[{x:80,y:240},{x:240,y:240}], startedAt:1000, endsAt:5000, fictional:true}];
             uiTest.drawOffice(document, uiTest.state, 'agent-0', uiTest.view);
         }""")
         cluster = self.page.locator(".session-cluster[data-session='session-0']")
-        self.assertIn("quiet scene", cluster.locator("h3").inner_text().casefold())
+        self.assertEqual(cluster.locator("h3").inner_text(), "")
         self.assertTrue(cluster.evaluate("element => element.classList.contains('quiet-cluster')"))
         self.assertIn("codex session 01", cluster.get_attribute("aria-label").casefold())
-        self.assertIn("quiet scene", cluster.get_attribute("aria-label").casefold())
+        self.assertNotIn("quiet scene", cluster.get_attribute("aria-label").casefold())
         self.assertNotIn("Review frontend accessibility", cluster.get_attribute("aria-label"))
-        self.assertIn("quiet scene", self.page.locator(".roster-session").first.inner_text().casefold())
-        self.assertIn("quiet scene", self.page.locator(".detail-session").inner_text().casefold())
+        self.assertEqual(self.page.locator(".roster-session").first.inner_text(), "")
+        self.assertEqual(self.page.locator(".detail-session").inner_text(), "")
         self.assertNotIn("Review frontend accessibility", cluster.inner_text())
         self.assertEqual(cluster.locator(".motifs").inner_text(), "")
-        effect = cluster.locator(".quiet-effect")
+        effect = cluster.locator(".office-actor")
         self.assertEqual(effect.count(), 1)
+        self.assertEqual(cluster.locator(".quiet-effect,.abandoned-note").count(), 0)
         self.assertIn("fictional", effect.get_attribute("aria-label").casefold())
         self.assertNotIn("Session ended", cluster.inner_text())
         self.assertIn("Codex", cluster.inner_text())
         self.assertIn("Idle", cluster.inner_text())
-        self.assertIn("fresh · connected", cluster.inner_text().casefold())
-        self.assertEqual(self.page.locator("button.character[data-agent='agent-0'] > .status-chip").inner_text(), "○ Idle")
+        self.assertIn("fresh · connected", self.page.locator("#details").inner_text().casefold())
+        self.assertEqual(self.page.locator("button.character[data-agent='agent-0'] > .status-chip").inner_text(), "Idle")
         self.assertEqual(self.state, before)
         self.assertEqual(self.page.locator("#feed").inner_text(), feed_before)
 
@@ -200,9 +549,10 @@ class OfficeBrowserTests(unittest.TestCase):
         self.assertEqual(cluster.locator(".motifs").inner_text(), "")
         self.assertIn("Unknown", character.locator(".status-chip").inner_text())
         self.assertNotIn("Session ended", cluster.inner_text())
-        self.assertIn("quiet scene", cluster.get_attribute("aria-label").casefold())
-        self.assertEqual(cluster.locator(".quiet-effect").count(), 1)
-        self.assertIn("fictional", cluster.locator(".quiet-effect").get_attribute("aria-label").casefold())
+        self.assertNotIn("quiet scene", cluster.get_attribute("aria-label").casefold())
+        self.assertEqual(cluster.locator(".quiet-effect,.abandoned-note").count(), 0)
+        for actor in cluster.locator(".office-actor").all():
+            self.assertIn("fictional", actor.get_attribute("aria-label").casefold())
         self.assertEqual(self.page.locator("#feed").inner_text(), "No observed activity yet.")
 
     def test_parent_ended_visibility_preference_is_rendered_and_toggleable(self):
@@ -315,7 +665,7 @@ class OfficeBrowserTests(unittest.TestCase):
         self.page.evaluate("state => releaseState(state)", stale)
         self.page.wait_for_function("document.querySelector('button.character[data-agent=agent-0]').textContent.includes('Working')")
         self.assertTrue(self.page.locator("#hide-titles").is_checked())
-        self.assertIn("Session title hidden", self.page.locator(".session-cluster").first.inner_text())
+        self.assertEqual(self.page.locator(".session-cluster .cluster-heading h3").first.inner_text(), "")
 
     def test_pagehide_pageshow_restarts_timers_and_ignores_old_requests(self):
         stale = self.hold_state_response()
@@ -377,9 +727,10 @@ class OfficeBrowserTests(unittest.TestCase):
             character["pose"] = "vignette"
         with self.page.expect_response("**/state"):
             self.page.evaluate("officeIntervals.get(2000)()")
-        self.page.wait_for_function("document.querySelector('.scene-badge')?.textContent.includes('Server-authored chat')")
+        self.page.wait_for_function("document.querySelector('button.character[data-agent=agent-0]')?.getAttribute('aria-description')?.includes('Server-authored chat')")
         self.page.evaluate("officeIntervals.get(1000)()")
-        self.assertEqual(self.page.locator(".scene-badge").count(), 2)
+        self.assertEqual(self.page.locator(".scene-badge").count(), 0)
+        self.assertIn("Fictional office scene: Server-authored chat", self.page.locator('button.character[data-agent="agent-0"]').get_attribute("aria-description"))
         self.assertTrue(self.page.locator('[data-prop="server-paper"]').is_visible())
         view["scenes"] = []
         view["props"] = []
@@ -540,7 +891,7 @@ class OfficeBrowserTests(unittest.TestCase):
             const {view} = uiTest;
             const host = view.clusters[0];
             view.scenes = [{id:'social', templateId:'chat', kind:'vignette', label:'Friendly chat',
-                participants:view.characters.map(c => c.agentId), startedAt:1000, endsAt:5000, fictional:true}];
+                participants:view.characters.map(c => c.agentId), route:[{kind:'zone',zoneId:'common-table'}], phase:'walking', startedAt:1000, endsAt:5000, fictional:true}];
             view.characters.forEach((c, i) => {
                 c.position = {x:host.position.x + 160 + i * 30, y:host.position.y + 40};
                 c.sceneId = 'social'; c.pose = 'vignette';
@@ -549,6 +900,7 @@ class OfficeBrowserTests(unittest.TestCase):
         }""")
 
     def test_cross_cluster_gathering_cleanup_and_return(self):
+        self.page.emulate_media(reduced_motion="no-preference")
         for width in (1440, 390):
             with self.subTest(width=width):
                 self.page.set_viewport_size({"width": width, "height": 1100})
@@ -561,25 +913,29 @@ class OfficeBrowserTests(unittest.TestCase):
                 actor = self.page.locator('button.character[data-agent="agent-1"] > .pixel-person')
                 status = self.page.locator('button.character[data-agent="agent-1"] > .status-chip')
                 desk = actor.bounding_box()
+                desk_scroll = self.page.evaluate("window.scrollY")
                 factual = status.bounding_box()
                 feed = self.page.locator("#feed").inner_text()
                 self.stage_scene()
+                self.page.wait_for_timeout(600)
                 moved = actor.bounding_box()
-                host = self.page.locator('[data-session="session-0"]').bounding_box()
+                floor = self.page.locator("#office-floor").bounding_box()
                 self.assertGreater(abs(moved["x"] - desk["x"]) + abs(moved["y"] - desk["y"]), 100)
-                self.assertTrue(host["x"] <= moved["x"] <= host["x"] + host["width"])
-                self.assertTrue(host["y"] <= moved["y"] <= host["y"] + host["height"])
+                self.assertTrue(floor["x"] <= moved["x"] <= floor["x"] + floor["width"] - moved["width"])
+                self.assertTrue(floor["y"] <= moved["y"] <= floor["y"] + floor["height"] - moved["height"])
                 self.assertEqual(status.bounding_box()["x"], factual["x"])
                 self.assertTrue(status.is_visible())
                 self.assertIn("Idle", status.inner_text())
-                provider = self.page.locator('button.character[data-agent="agent-1"] > .character-provider')
-                self.assertTrue(provider.is_visible())
-                self.assertEqual(provider.inner_text(), "Codex")
-                self.assertTrue(self.page.locator('button.character[data-agent="agent-1"] > .freshness').is_visible())
+                self.assertEqual(self.page.locator('button.character[data-agent="agent-1"] > .character-provider').count(), 0)
+                self.assertEqual(self.page.locator('button.character[data-agent="agent-1"] > .freshness').count(), 0)
+                self.assertGreater(actor.evaluate("el => el.getAnimations().filter(animation => animation.id === 'office-walk-route').length"), 0)
+                self.page.locator('button.character[data-agent="agent-1"]').click()
+                self.assertTrue(self.page.locator("#details .provider-tag").is_visible())
+                self.page.locator("#details .technical-details summary").click()
+                self.assertIn("Codex ·", self.page.locator("#details").inner_text())
+                self.assertIn("fresh · connected", self.page.locator("#details").inner_text())
                 self.assertEqual(self.page.locator("#feed").inner_text(), feed)
-                self.assertEqual(self.page.locator("#agent-layer img").count(), 0)
-                self.assertEqual(actor.evaluate("el => getComputedStyle(el).transitionDuration"), "0s")
-                self.assertEqual(actor.evaluate("el => getComputedStyle(el).animationName"), "none")
+                self.assertTrue(self.page.locator("#agent-layer img").evaluate_all("images => images.every(image => new URL(image.src).pathname.startsWith('/assets/'))"))
                 self.page.evaluate("""() => {
                     const {view} = uiTest; const target = view.characters[1];
                     view.props = [{id:'paper', spaceId:target.spaceId, deskIndex:target.deskIndex,
@@ -589,13 +945,15 @@ class OfficeBrowserTests(unittest.TestCase):
                     window.persistentProp = document.querySelector('[data-prop="paper"]');
                     view.props[0].cleanupSceneId='social';
                     view.scenes[0].kind='cleanup'; view.scenes[0].label='Tidying';
+                    view.scenes[0].route=[{kind:'desk',agentId:target.agentId}];
+                    view.scenes[0].phase='acting';
                     view.characters.forEach(c => {c.position={...target.deskPosition}; c.pose='cleanup';});
                     uiTest.drawOffice(document, uiTest.state, null, view);
                 }""")
                 prop = self.page.locator('[data-prop="paper"]')
                 self.assertTrue(prop.is_visible())
                 self.assertTrue(self.page.evaluate("persistentProp === document.querySelector('[data-prop=paper]')"))
-                self.assertIn("picking up", prop.inner_text())
+                self.assertIn("being picked up", prop.get_attribute("aria-label"))
                 cleaner = self.page.locator('button.character[data-agent="agent-0"] > .pixel-person')
                 self.assertLess(abs(cleaner.bounding_box()["y"] - prop.bounding_box()["y"]), 65)
                 self.page.evaluate("""() => {
@@ -604,7 +962,11 @@ class OfficeBrowserTests(unittest.TestCase):
                     uiTest.drawOffice(document, uiTest.state, null, uiTest.view);
                 }""")
                 self.assertEqual(self.page.locator('[data-prop="paper"]').count(), 0)
-                self.assertEqual(actor.bounding_box(), desk)
+                self.page.wait_for_timeout(750)
+                returned = actor.bounding_box()
+                return_scroll = self.page.evaluate("window.scrollY")
+                self.assertAlmostEqual(returned["x"], desk["x"], delta=1)
+                self.assertAlmostEqual(returned["y"] + return_scroll, desk["y"] + desk_scroll, delta=1)
                 self.assertLessEqual(self.page.evaluate("document.documentElement.scrollWidth"), width)
 
     def test_motion_returns_and_provider_interruption_is_immediate(self):

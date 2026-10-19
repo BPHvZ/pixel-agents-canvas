@@ -94,7 +94,7 @@ async function startPreview(id, frameId) {
         if (worldNow < end) await readStateAt(end);
       }
     }
-    const postStepInterval = steps.at(-1)?.tickIntervalMs ?? 30_000;
+    const postStepInterval = steps.at(-1)?.tickIntervalMs ?? fixture.worldTickIntervalMs ?? 30_000;
     if (!Number.isFinite(postStepInterval) || postStepInterval <= 0) throw new Error("Invalid production world cadence");
     for (let atMs = worldNow + postStepInterval; atMs <= frameTime; atMs += postStepInterval) await readStateAt(atMs);
     if (worldNow < frameTime) await readStateAt(frameTime);

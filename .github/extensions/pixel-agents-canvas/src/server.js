@@ -47,9 +47,14 @@ export async function createOfficeServer({instanceId,controller,preferences,worl
     await preferences.read();
     /** @type {Map<string,{body:string,type:string}>} */
     const assets=new Map();
-    for (const [name,type] of [['office-client.js','text/javascript'],['office-world.js','text/javascript'],['office.css','text/css']]) {
-        if (!name || !type) continue;
+    /** @type {[string, string][]} */
+    const scripts=[['office-client.js','text/javascript'],['office-world.js','text/javascript'],['office.css','text/css']];
+    for (const [name,type] of scripts) {
         assets.set(`/${name}`,{body:await readFile(new URL(name,import.meta.url),'utf8'),type});
+    }
+    for (const name of ['common-table','coffee-station','desk-divider','mug','book','paper','paper-hat','web','plant','leaves','chair','bin','wall-art','spider','ghost','coffee-steam','recycling']) {
+        if (!name) continue;
+        assets.set(`/assets/${name}.svg`,{body:await readFile(new URL(`../assets/${name}.svg`,import.meta.url),'utf8'),type:'image/svg+xml'});
     }
     let origin='';
     /** @param {import('node:http').ServerResponse} response @param {number} status @param {unknown} value */

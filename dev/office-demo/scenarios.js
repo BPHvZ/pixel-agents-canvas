@@ -22,7 +22,7 @@ export function seededRandom(seed) {
   };
 }
 
-/** @typedef {{ id: string, title: string, description: string, covers: string[], viewport?: "wide"|"tablet"|"narrow", reducedMotion?: boolean }} Scenario */
+/** @typedef {{ id: string, title: string, description: string, covers: string[], viewport?: "wide"|"tablet"|"narrow", reducedMotion?: boolean, worldTickIntervalMs?: number }} Scenario */
 /** @typedef {import("./scenario-types.js").ScenarioProviderUpdate} ProviderUpdate */
 /** @typedef {import("./scenario-types.js").ScenarioCodexThread} CodexThreadFixture */
 /** @typedef {import("./scenario-types.js").ScenarioRawCopilotEvent} RawCopilotEvent */
@@ -38,7 +38,8 @@ export const SCENARIO_COVERAGE = Object.freeze([
   "waiting for approval", "waiting for input", "failed", "unknown state", "stale freshness", "disconnected agent", "partial coverage", "explicit end", "ended agent", "off-duty fiction", "show ended",
   "hidden titles", "local alias", "appearance", "motif boundary", "coverage matrix", "unknown capability", "partial metadata", "feed identity unavailable", "quiet cluster", "fiction label", "no inferred idle or end",
   "scene toggle", "dialogue toggle", "ended hidden", "preference controls", "wide viewport", "tablet viewport", "narrow viewport", "390 px viewport", "reduced motion", "responsive clusters",
-  "solo-vignette", "coffee", "tea", "stretch", "plant", "tidy", "cleanup:tidy", "reading", "antics", "chat", "group-vignette",
+  "solo-vignette", "coffee", "tea", "stretch", "plant", "tidy", "cleanup:tidy", "reading", "paper-hat", "chat", "group-vignette",
+  "coffee station route", "common table route", "persistent global book", "persistent desk mug", "spider actor route", "persistent spider web", "own-desk web cleanup", "temporary hat appearance", "globally staggered dialogue",
   "off-duty-vignette", "off-duty-stroll", "off-duty-plants", "off-duty-window", "off-duty-books", "quiet:chair-movement", "quiet:ghost", "quiet:spider", "quiet:screen-flicker",
   "default-no-observation", "default-source-health", "default-copilot-empty", "default-codex-empty", "default-unmonitored-thread", "default-uncertain-agents", "default-privacy-appearance", "default-coverage-feed",
   "abandoned:chair-movement", "abandoned:ghost", "abandoned:spider", "abandoned:screen-flicker", "dialogue-visible", "dialogue-disabled", "working-pose", "approval-wait-pose",
@@ -63,6 +64,8 @@ const definitions = [
   { id: "preferences-off", title: "Preferences turned off", description: "Vignettes and dialogue are disabled as presentation preferences.", covers: ["scene toggle", "dialogue toggle", "ended hidden", "preference controls"] },
   { id: "responsive-reduced", title: "Narrow · reduced motion", description: "Narrow layout and reduced-motion settings accompany real source inputs.", covers: ["390 px viewport", "narrow viewport", "reduced motion", "responsive clusters"], viewport: "narrow", reducedMotion: true },
   { id: "desk-setup", title: "Desk setup after space reuse", description: "Three raw-source stages create a fictional prop, explicitly close the first session, and reuse its physical space for a new hosting session while one OfficeWorld persists.", covers: ["desk-setup"] },
+  { id: "office-actions", title: "Shared-office actions", description: "A fresh idle synthetic agent takes complete trips to the shared coffee station and common table, performs desk-level scenes, and interacts with persistent props.", covers: ["coffee station route", "common table route", "persistent global book", "persistent desk mug", "spider actor route", "persistent spider web", "own-desk web cleanup", "temporary hat appearance", "globally staggered dialogue"], worldTickIntervalMs: 1000 },
+
 ];
 
 export const SCENARIO_LIMITATIONS = Object.freeze([]);
@@ -82,11 +85,17 @@ export const SCENARIO_GALLERY_FRAMES = Object.freeze([
   galleryFrame("default-uncertain-agents", "uncertain-agents", "42", ["default-uncertain-agents"], { providers: [{ id: "Copilot", availability: "stale" }, { id: "Codex", availability: "disconnected" }], sessionCount: 2, agentCount: 2, agentStates: [{ agentId: "copilot:scenario-uncertain:agent:main", state: "unknown" }, { agentId: "codex:offline:agent:offline", state: "unknown" }] }),
   galleryFrame("default-privacy-appearance", "privacy-appearance", "42", ["default-privacy-appearance"], { providers: [{ id: "Codex", availability: "connected" }], sessionCount: 2, agentCount: 2, preferences: { hiddenSessionTitles: ["codex:private-two"] } }),
   galleryFrame("default-coverage-feed", "coverage-feed", "42", ["default-coverage-feed"], { providers: [{ id: "Copilot", availability: "connected" }, { id: "Codex", availability: "stale" }], sessionCount: 2, agentCount: 2, agentStates: [{ agentId: "copilot:scenario-coverage:agent:main", state: "working" }, { agentId: "codex:orphan-container:agent:orphan-container", state: "unknown" }] }),
-  ...[["coffee", "187"], ["tea", "195"], ["stretch", "199"], ["plant", "197"], ["tidy", "428"], ["reading", "198"], ["antics", "190"], ["chat", "192"]].map(([templateId, seed]) => galleryFrame(`solo-${templateId}`, "quiet-fiction", seed, ["solo-vignette", templateId], { sceneTemplateIds: [templateId], sceneKinds: ["vignette"], poses: [{ pose: "vignette" }] })),
-  galleryFrame("cleanup-tidy", "quiet-fiction", "193", ["cleanup:tidy"], { sceneTemplateIds: ["tidy"], sceneKinds: ["cleanup"], poses: [{ pose: "cleanup" }] }),
-  galleryFrame("group-vignette", "provider-combinations", "0", ["group-vignette", "reading"], { sceneTemplateIds: ["reading"], sceneKinds: ["vignette"], sceneParticipantCounts: { reading: 2 } }),
-  ...[["off-duty-stroll", "195"], ["off-duty-plants", "198"], ["off-duty-window", "199"], ["off-duty-books", "191"]].map(([templateId, seed]) => galleryFrame(templateId, "ended-off-duty", seed, ["off-duty-vignette", templateId], { sceneTemplateIds: [templateId], sceneKinds: ["vignette"], sceneParticipantCounts: { [templateId]: 1 } })),
-  ...[["chair-movement", "0"], ["ghost", "1"], ["spider", "2"], ["screen-flicker", "10"]].map(([kind, seed]) => galleryFrame(`quiet-${kind}`, "quiet-fiction", seed, [`quiet:${kind}`], { effectKinds: [`quiet:${kind}`] })),
+  ...[["coffee", "2"], ["tea", "12"], ["stretch", "13"], ["plant", "6"], ["tidy", "7"], ["reading", "3"], ["paper-hat", "0"], ["chat", "23"]].map(([templateId, seed]) => {
+    const route = ["coffee", "tea"].includes(templateId) ? [{ kind: "zone", zoneId: "coffee-station" }] : templateId === "plant" ? [{ kind: "zone", zoneId: "plant-corner" }] : ["reading", "chat", "stretch"].includes(templateId) ? [{ kind: "zone", zoneId: "common-table" }] : templateId === "paper-hat" ? [] : undefined;
+    return galleryFrame(`solo-${templateId}`, "quiet-fiction", seed, ["solo-vignette", templateId], { sceneTemplateIds: [templateId], sceneKinds: [templateId === "tidy" ? "cleanup" : "vignette"], poses: [{ pose: templateId === "tidy" ? "cleanup" : "vignette" }], ...(route ? { sceneRoutes: [{ templateId, route }] } : {}) });
+  }),
+  galleryFrame("cleanup-tidy", "quiet-fiction", "7", ["cleanup:tidy"], { sceneTemplateIds: ["tidy"], sceneKinds: ["cleanup"], poses: [{ pose: "cleanup" }] }),
+  galleryFrame("group-vignette", "provider-combinations", "5", ["group-vignette", "reading"], { sceneTemplateIds: ["reading"], sceneKinds: ["vignette"], sceneParticipantCounts: { reading: 2 } }),
+  ...[["off-duty-stroll", "5"], ["off-duty-plants", "1"], ["off-duty-window", "4"], ["off-duty-books", "0"]].map(([templateId, seed]) => {
+    const zoneId = templateId === "off-duty-plants" ? "plant-corner" : templateId === "off-duty-window" ? "window" : templateId === "off-duty-books" ? "bookshelf" : "common-table";
+    return galleryFrame(templateId, "ended-off-duty", seed, ["off-duty-vignette", templateId], { sceneTemplateIds: [templateId], sceneKinds: ["vignette"], sceneParticipantCounts: { [templateId]: 1 }, sceneRoutes: [{ templateId, route: [{ kind: "zone", zoneId }] }] });
+  }),
+  ...[["chair-movement", "1"], ["ghost", "2"], ["spider", "0"], ["screen-flicker", "16"]].map(([kind, seed]) => galleryFrame(`quiet-${kind}`, "quiet-fiction", seed, [`quiet:${kind}`], { effectKinds: [`quiet:${kind}`] })),
   ...[["chair-movement", "0"], ["ghost", "1"], ["spider", "7"], ["screen-flicker", "4"]].map(([kind, seed]) => galleryFrame(`abandoned-${kind}`, "ended-off-duty", seed, [`abandoned:${kind}`], { effectKinds: [`abandoned:${kind}`] })),
   galleryFrame("dialogue-visible", "quiet-fiction", "0", ["dialogue-visible"], { dialogue: true }),
   galleryFrame("dialogue-disabled", "preferences-off", "42", ["dialogue-disabled"], { dialogue: false }),
@@ -102,7 +111,16 @@ export const SCENARIO_GALLERY_FRAMES = Object.freeze([
   galleryFrame("wide-layout", "copilot-working", "42", ["wide-layout"], { viewport: "wide" }),
   galleryFrame("tablet-layout", "provider-combinations", "0", ["tablet-layout"], { viewport: "tablet" }),
   galleryFrame("narrow-layout", "responsive-reduced", "42", ["narrow-layout"], { viewport: "narrow" }),
-  galleryFrame("desk-setup", "desk-setup", "42", ["desk-setup"], { sceneTemplateIds: ["desk-setup"], sceneKinds: ["desk-setup"], sceneParticipantCounts: { "desk-setup": 1 } }, "reuse-desk", NOW + 120001),
+  galleryFrame("desk-setup", "desk-setup", "42", ["desk-setup"], { sceneTemplateIds: ["desk-setup"], sceneKinds: ["desk-setup"], sceneParticipantCounts: { "desk-setup": 1 } }, "reuse-desk", NOW + 54001),
+  galleryFrame("action-coffee-station", "office-actions", "187", ["coffee station route", "persistent desk mug"], { sceneTemplateIds: ["coffee"], sceneRoutes: [{ templateId: "coffee", route: [{ kind: "zone", zoneId: "coffee-station" }], phase: "walking" }] }, undefined, NOW + 24000),
+  galleryFrame("action-coffee-return", "office-actions", "187", ["persistent desk mug"], { propLocations: [{ kind: "mug", location: { kind: "desk", spaceId: "space:0", deskIndex: 0, position: { x: 58, y: 92 } } }] }, undefined, NOW + 30000),
+  galleryFrame("action-reading-table", "office-actions", "2", ["common table route", "reading"], { sceneTemplateIds: ["reading"], sceneRoutes: [{ templateId: "reading", route: [{ kind: "zone", zoneId: "common-table" }], phase: "walking" }] }, undefined, NOW + 47000),
+  galleryFrame("action-book-at-table", "office-actions", "2", ["persistent global book"], { propLocations: [{ kind: "book", location: { kind: "zone", zoneId: "common-table", slot: 0 } }] }, undefined, NOW + 53000),
+  galleryFrame("action-spider-crossing", "office-actions", "42", ["spider actor route"], { sceneTemplateIds: ["spider-web"], sceneParticipantCounts: { "spider-web": 0 }, actorKinds: ["spider"], actorRoutes: [{ kind: "spider", route: [{ x: 14, y: 68 }, { x: 40, y: 62 }, { x: 62, y: 76 }] }] }, undefined, NOW + 40000),
+  galleryFrame("action-spider-web-left", "office-actions", "42", ["persistent spider web"], { propLocations: [{ kind: "web", location: { kind: "desk", spaceId: "space:0", deskIndex: 0, position: { x: 62, y: 76 } } }] }, undefined, NOW + 44000),
+  galleryFrame("action-spider-web-cleanup", "office-actions", "42", ["own-desk web cleanup"], { sceneTemplateIds: ["cleanup-web"], sceneKinds: ["cleanup"], sceneRoutes: [{ templateId: "cleanup-web", route: [{ kind: "desk", agentId: "codex:office-actions:agent:office-actions" }], phase: "walking" }], propLocations: [{ kind: "web", location: { kind: "desk", spaceId: "space:0", deskIndex: 0, position: { x: 62, y: 76 } } }] }, undefined, NOW + 46000),
+  galleryFrame("action-paper-hat", "office-actions", "100", ["paper-hat", "temporary hat appearance"], { sceneTemplateIds: ["paper-hat"], sceneRoutes: [{ templateId: "paper-hat", route: [], phase: "acting" }] }, undefined, NOW + 34000),
+  galleryFrame("action-dialogue-stagger", "office-actions", "2", ["globally staggered dialogue"], { dialogue: true }, undefined, NOW + 46000),
 ]);
 
 /** @param {Partial<import("../../.github/extensions/pixel-agents-canvas/src/product-types.js").Preferences>} [overrides] */
@@ -129,6 +147,7 @@ export function buildScenarioFixture(id, seed = "42") {
     preferences: preferences(),
     viewport: scenario.viewport ?? "wide",
     reducedMotion: scenario.reducedMotion ?? false,
+    worldTickIntervalMs: scenario.worldTickIntervalMs,
     seed,
     frames: SCENARIO_GALLERY_FRAMES.filter((frame) => frame.scenarioId === id),
   };
@@ -210,14 +229,19 @@ export function buildScenarioFixture(id, seed = "42") {
       fixture.codexThreads = [thread("narrow-waiting", "Test keyboard navigation", { type: "active", activeFlags: ["waitingOnUserInput"] })];
       fixture.preferences = preferences({ dialogue: false });
       break;
+    case "office-actions":
+      fixture.providerUpdates.Codex = connectedCodex;
+      fixture.codexThreads = [thread("office-actions", "Shared office actions", { type: "idle" })];
+      fixture.preferences = preferences({ dialogue: true });
+      break;
     case "desk-setup": {
       /** @param {string} stepId @param {number} atMs @param {string} sessionId @param {RawCopilotEvent[]} copilotEvents @param {number} [advanceTo] @returns {ScenarioStep} */
       const step = (stepId, atMs, sessionId, copilotEvents, advanceTo) => ({ id: stepId, atMs, hostingSessionId: sessionId, copilotEvents, ...(advanceTo === undefined ? {} : { advanceTo, tickIntervalMs: 1000 }) });
       const firstSession = "desk-setup-before";
       fixture.steps = [
-        step("create-prop", NOW, firstSession, [event("desk-idle", "session.idle")], NOW + 120000),
-        step("close-session", NOW + 120000, firstSession, [event("desk-close", "session.shutdown", NOW + 120000)]),
-        step("reuse-desk", NOW + 120001, "desk-setup-after", [event("desk-return", "session.idle", NOW + 120001)]),
+        step("create-prop", NOW, firstSession, [event("desk-idle", "session.idle")], NOW + 54000),
+        step("close-session", NOW + 54000, firstSession, [event("desk-close", "session.shutdown", NOW + 54000)]),
+        step("reuse-desk", NOW + 54001, "desk-setup-after", [event("desk-return", "session.idle", NOW + 54001)]),
       ];
       break;
     }
@@ -254,6 +278,8 @@ export function buildScenarioState(id, seed = "42", atMs = NOW + 90000) {
   let now = fixture.now;
   let snapshot = buildScenarioSnapshot(fixture);
   const world = createOfficeWorld({ clock: () => now, random: seededRandom(hashSeed(`${seed}:${id}`)) });
+  world.update(snapshot, fixture.preferences);
+  world.tick();
   for (const step of fixture.steps) {
     now = step.atMs;
     const input = {
@@ -267,9 +293,11 @@ export function buildScenarioState(id, seed = "42", atMs = NOW + 90000) {
     };
     snapshot = buildScenarioSnapshot(input);
     world.update(snapshot, fixture.preferences);
+    world.tick();
     if (step.advanceTo !== undefined) {
       while (now < step.advanceTo) {
         now = Math.min(now + step.tickIntervalMs, step.advanceTo);
+        world.update(snapshot, fixture.preferences);
         world.tick();
       }
     }
@@ -279,11 +307,15 @@ export function buildScenarioState(id, seed = "42", atMs = NOW + 90000) {
 
 /** @param {import("../../.github/extensions/pixel-agents-canvas/src/product-types.js").OfficeSnapshot} snapshot @param {import("../../.github/extensions/pixel-agents-canvas/src/product-types.js").Preferences} preferences @param {string} id @param {string} [seed] @param {number} [atMs] */
 export function buildScenarioWorld(snapshot, preferences, id, seed = "42", atMs = NOW + 90000) {
-  let now = NOW;
+  const fixture = buildScenarioFixture(id, seed);
+  const interval = fixture.worldTickIntervalMs ?? 30000;
+  let now = snapshot.now;
   const world = createOfficeWorld({ clock: () => now, random: seededRandom(hashSeed(`${seed}:${id}`)) });
   world.update(snapshot, preferences);
+  world.tick();
   while (now < atMs) {
-    now = Math.min(now + 30000, atMs);
+    now = Math.min(now + interval, atMs);
+    world.update(snapshot, preferences);
     world.tick();
   }
   return world.view();

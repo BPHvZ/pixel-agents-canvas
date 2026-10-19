@@ -239,7 +239,15 @@ test('server serves explicit assets/state and rejects cross-origin writes, inval
   assert.equal(writes,0);
   const html=await fetch(url).then(r=>r.text());
   assert.ok(html.includes('/office-client.js'));
+  assert.ok(html.includes('/assets/common-table.svg'));
   assert.equal((await fetch(new URL('/office-client.js',url))).headers.get('content-type').startsWith('text/javascript'),true);
+  for(const asset of ['common-table','coffee-station','desk-divider','mug','book','paper','paper-hat','web','plant','leaves','chair','bin','wall-art','spider','ghost','coffee-steam','recycling']) {
+   const response=await fetch(new URL(`/assets/${asset}.svg`,url));
+   assert.equal(response.status,200,asset);
+   assert.equal(response.headers.get('content-type').startsWith('image/svg+xml'),true,asset);
+   assert.match(await response.text(),/<svg\b/,asset);
+  }
+  assert.equal((await fetch(new URL('/assets/private.svg',url))).status,404);
  }finally{await server.close();await controller.stop();}
 });
 
@@ -254,9 +262,11 @@ test('open-instance presentation props survive page reload but a new instance st
  try{
   await fetch(first.url);
   now=10000;
+  await fetch(new URL('/state',first.url));
+  now=16000;
   const before=await fetch(new URL('/state',first.url)).then(r=>r.json());
   assert.ok(before.world.props.length);
-  now=14000;
+  now=18000;
   const reloaded=await fetch(first.url).then(r=>r.text());
   assert.ok(reloaded.includes(before.world.props[0].id));
   const after=await fetch(new URL('/state',first.url)).then(r=>r.json());
