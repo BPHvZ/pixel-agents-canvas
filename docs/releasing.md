@@ -6,16 +6,26 @@ A GitHub release is a tagged source snapshot of this repository with generated n
 
 The repository is not yet release-complete. A draft can be created before the product is ready, but do not publish it until the remaining gates in [implementation progress](implementation-progress.md) are clear.
 
+## Branch and promotion model
+
+This repository uses a small, GitFlow-inspired two-branch promotion model, not full GitFlow. There are no permanent feature, release, or hotfix branches:
+
+- Ordinary feature, fix, and documentation pull requests target `develop`.
+- When a set of changes is ready for the source-release snapshot, open one promotion PR from `develop` to `main`. Its body is the user-facing summary for that release batch; use the [release promotion PR template](../.github/PULL_REQUEST_TEMPLATE/release.md) and keep its body limited to those notes.
+- `main` is the canonical source snapshot/import branch. Do not target it with ordinary change PRs. Merging a promotion PR does not publish a release.
+
+Both `develop` and `main` are protected: changes require a pull request, the `check` GitHub Actions check-run on an up-to-date branch, resolved conversations, and admin enforcement; zero approvals are required. Force pushes and branch deletion are disabled. Protection settings are GitHub repository settings, not enforced by the workflow files in this repository.
+
 ## Draft lifecycle
 
-Every merge to `main` updates one rolling GitHub Release draft. It contains the merged pull requests since the last published release, so multiple merges before publication are grouped into one release. The first draft is created as `v0.1.0` after the next merge and includes all previously unreleased pull requests.
+Only pushes to `main` update the one rolling GitHub Release draft. A promotion merge therefore captures the batch chosen for `main`; multiple promotion merges before publication are accumulated into the same draft. The draft's change entry uses the promotion PR body rather than its title or internal process details. The first draft is created as `v0.1.0` after the next merge to `main`; it summarizes the first promoted batch, including previously unreleased work already on `develop`. No release draft exists yet.
 
-After the first release is published, the next release batch defaults to a patch bump. Add one of these labels to a pull request before it merges to request a larger bump:
+After the first release is published, the next release batch defaults to a patch bump. Put one of these existing labels on the **promotion PR** before it merges to request a larger bump:
 
 - `release:minor` — feature release
 - `release:major` — breaking-change release
 
-Generated notes use pull request titles and group changes into Breaking Changes, Features, and Other Changes, so use descriptive PR titles. Review the draft title, tag, and notes before publication. Published versions below `1.0.0` are marked as pre-releases; `1.0.0` and later are normal releases.
+The labels on feature PRs merged to `develop` do not choose the version of a later promotion. Review the draft title, tag, and notes before publication. Published versions below `1.0.0` are marked as pre-releases; `1.0.0` and later are normal releases.
 
 ## Publishing
 
@@ -23,6 +33,6 @@ Generated notes use pull request titles and group changes into Breaking Changes,
 2. Review the rolling draft, including the resolved version and generated notes.
 3. When the release-readiness gates are satisfied, publish the draft. Publication makes the tagged source snapshot and GitHub-generated source archives available; it does not install or update a Copilot App canvas or publish it to a marketplace. The App's separate initial-install path is described in the [README](../README.md).
 
-## Main-branch policy
+## Branch protection policy
 
-Changes reach `main` through pull requests. The `Checks / check` job must pass on an up-to-date branch, and all review conversations must be resolved. Approvals are not required because the repository owner is the only account with write/admin access; the owner reviews and merges each PR. Public contributors can propose changes through fork PRs, but write access must remain owner-only to preserve owner-only merge authority.
+Both protected branches accept changes only through pull requests with the `check` GitHub Actions check-run passing on an up-to-date branch and all review conversations resolved. No approvals are required. Admin enforcement is enabled, and force pushes and branch deletion are disabled. Repository access and protection rules are managed in GitHub settings; verify those settings there rather than treating this document or the workflow as enforcement.
