@@ -1,0 +1,61 @@
+name: Draft Release
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+  pull-requests: read
+
+concurrency:
+  group: draft-release-main
+  cancel-in-progress: false
+
+jobs:
+  update-draft:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out full history
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: Bootstrap the initial version and comparison baseline
+        id: bootstrap
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPOSITORY: ${{ github.repository }}
+        run: |
+          published_releases=$(gh api "repos/${GH_REPOSITORY}/releases?per_page=100" --jq '[.[] | select(.draft == false)] | length')
+          if [ "$published_releases" -eq 0 ]; then
+            root_commit=$(git rev-list --max-parents=0 HEAD | sed -n '1p')
+            echo "version=0.1.0" >> "$GITHUB_OUTPUT"
+            echo "from=$root_commit" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Update the rolling draft
+        id: drafter
+        uses: release-drafter/release-drafter@978bb0b30c5ee8cdd332ced253758157150d43f0 # v7
+        with:
+          config-name: release-drafter.yml
+          version: ${{ steps.bootstrap.outputs.version }}
+          from: ${{ steps.bootstrap.outputs.from }}
+          include-pre-releases: true
+
+      - name: Set pre-release status from the resolved version
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPOSITORY: ${{ github.repository }}
+          RELEASE_ID: ${{ steps.drafter.outputs.id }}
+          MAJOR_VERSION: ${{ steps.drafter.outputs.major_version }}
+        run: |
+          if [ "$MAJOR_VERSION" = "0" ]; then
+            prerelease=true
+          else
+            prerelease=false
+          fi
+          gh api \
+            --method PATCH \
+            "repos/${GH_REPOSITORY}/releases/${RELEASE_ID}" \
+            -F "prerelease=${prerelease}"

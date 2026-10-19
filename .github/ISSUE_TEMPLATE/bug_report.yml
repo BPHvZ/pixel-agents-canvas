@@ -1,0 +1,39 @@
+name: Bug report
+description: Report a reproducible problem without sharing sensitive session data.
+title: "[Bug]: "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: >-
+        **Privacy:** Never include prompts, transcripts, tool payloads, credentials, local paths, or unredacted screenshots/logs. Redact provider titles and use synthetic examples.
+  - type: textarea
+    id: summary
+    attributes:
+      label: What happened?
+      description: Describe the observed behavior and what you expected instead.
+    validations:
+      required: true
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Reproduction steps
+      description: Use synthetic or redacted data. Do not include private session content.
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Version or commit
+    validations:
+      required: false
+  - type: dropdown
+    id: checks
+    attributes:
+      label: Checks run
+      options:
+        - Not applicable
+        - npm run check
+        - Browser check
+    validations:
+      required: true

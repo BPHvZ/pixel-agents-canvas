@@ -1,0 +1,69 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="dark">
+  <title>Pixel Agents Office · Local demo</title>
+  <link rel="stylesheet" href="/player.css">
+  <script type="module" src="/player.js"></script>
+</head>
+<body>
+  <main class="demo-shell">
+    <header class="demo-header">
+      <div>
+        <p class="eyebrow">Local developer preview · synthetic scenarios only</p>
+        <h1>Pixel Agents Office <span>Local demo</span></h1>
+        <p class="intro">Exercise named production UI states without starting agents or loading provider data.</p>
+      </div>
+      <strong class="mock-badge">DEVELOPMENT PREVIEW</strong>
+    </header>
+
+    <section class="player panel" aria-label="Scenario controls">
+      <div class="player-controls">
+        <label>Scenario
+          <select id="scenario-select" aria-label="Select named scenario"></select>
+        </label>
+        <label>Capture frame
+          <select id="frame-select" aria-label="Select named capture frame"></select>
+        </label>
+        <button id="previous" type="button">Previous</button>
+        <button id="next" type="button">Next</button>
+        <label>Viewport
+          <select id="viewport">
+            <option value="1100">Wide · 1100 px</option>
+            <option value="820">Tablet · 820 px</option>
+            <option value="390">Narrow · 390 px</option>
+          </select>
+        </label>
+        <button id="reset" type="button">Reset / replay</button>
+      </div>
+      <div class="frame-navigation" aria-label="Selected scenario frame navigation">
+        <button id="frame-previous" type="button">Previous frame</button>
+        <button id="frame-next" type="button">Next frame</button>
+        <button id="play-frames" type="button" aria-pressed="false">Play frames</button>
+      </div>
+      <section class="frame-index" aria-labelledby="frame-index-title">
+        <h2 id="frame-index-title">Frames in this scenario</h2>
+        <ol id="frame-list" class="frame-list"></ol>
+      </section>
+      <p id="player-status" role="status" aria-live="polite">Loading scenario catalog…</p>
+      <p class="direct-link">Each named scenario frame has a stable URL and replays at its declared virtual time.</p>
+    </section>
+
+    <div class="demo-grid">
+      <aside class="scenario-panel panel" aria-labelledby="scenario-list-title">
+        <h2 id="scenario-list-title">Scenario coverage</h2>
+        <p class="muted">The catalog represents intentional V1 states and presentation behaviors.</p>
+        <ol id="scenario-list" class="scenario-list"></ol>
+      </aside>
+      <section class="preview-panel" aria-label="Production office preview">
+        <div class="preview-context"><strong>DEVELOPMENT PREVIEW · SYNTHETIC DATA</strong><span id="current-scenario"></span></div>
+        <iframe id="office-preview" title="Production office renderer showing synthetic local scenario" sandbox="allow-scripts allow-same-origin"></iframe>
+        <div class="preview-actions"><a id="open-preview" target="_blank" rel="noreferrer">Open production preview</a><button id="copy-url" type="button">Copy scenario URL</button></div>
+      </section>
+    </div>
+    <footer>Scenario selection stays outside the canvas. The preview uses the production server, normalization, markup, renderer, client and styles; its fixture controller is local and provider actions are no-ops. Nothing here is live provider activity.</footer>
+  </main>
+</body>
+</html>

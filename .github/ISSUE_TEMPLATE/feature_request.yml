@@ -1,0 +1,30 @@
+name: Feature request
+description: Propose a focused improvement consistent with the accepted product scope.
+title: "[Feature]: "
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: >-
+        **Privacy:** Never include prompts, transcripts, tool payloads, credentials, local paths, or unredacted screenshots/logs. Use synthetic examples only.
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem or need
+      description: What user need would this address?
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed behavior
+      description: Explain how this should work, including factual activity and any clearly labeled office fiction.
+    validations:
+      required: true
+  - type: textarea
+    id: scope
+    attributes:
+      label: Product decision or privacy considerations
+      description: Link an accepted ADR if known; identify any new product-boundary or privacy decisions.
+    validations:
+      required: false

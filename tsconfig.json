@@ -1,0 +1,18 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "allowJs": true,
+    "checkJs": true,
+    "noEmit": true,
+    "strict": true,
+    "noUncheckedIndexedAccess": true,
+    "types": ["node"]
+  },
+  "include": [
+    ".github/extensions/pixel-agents-canvas/extension.mjs",
+    ".github/extensions/pixel-agents-canvas/src/**/*.js",
+    ".github/extensions/pixel-agents-canvas/src/**/*.d.ts"
+  ]
+}

@@ -1,0 +1,23 @@
+name: Usage question
+description: Ask a question about using Pixel Agents Office.
+title: "[Question]: "
+labels: ["question"]
+body:
+  - type: markdown
+    attributes:
+      value: >-
+        **Privacy:** Never include prompts, transcripts, tool payloads, credentials, local paths, or unredacted screenshots/logs. Redact or synthesize examples.
+  - type: textarea
+    id: question
+    attributes:
+      label: What would you like to know?
+      description: Check the README and existing issues first; keep any example synthetic or redacted.
+    validations:
+      required: true
+  - type: textarea
+    id: context
+    attributes:
+      label: Safe context
+      description: Share relevant version, browser, or environment details without private session data.
+    validations:
+      required: false
