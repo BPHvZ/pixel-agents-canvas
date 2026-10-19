@@ -11,14 +11,15 @@ The repository is not yet release-complete. A draft can be created before the pr
 This repository uses a small, GitFlow-inspired two-branch promotion model, not full GitFlow. There are no permanent feature, release, or hotfix branches:
 
 - Ordinary feature, fix, and documentation pull requests target `develop`.
-- When a set of changes is ready for the source-release snapshot, open one promotion PR from `develop` to `main`. Its body is the user-facing summary for that release batch; use the [release promotion PR template](../.github/PULL_REQUEST_TEMPLATE/release.md) and keep its body limited to those notes.
+- When a set of changes is ready for the source-release snapshot, open one promotion PR from `develop` to `main`. Use the [release promotion PR template](../.github/PULL_REQUEST_TEMPLATE/release.md) to prepare concise user-facing notes for the maintainer to curate into the release draft.
 - `main` is the canonical source snapshot/import branch. Do not target it with ordinary change PRs. Merging a promotion PR does not publish a release.
+- After the promotion merges, open a sync PR from `main` back to `develop` and merge it with a merge commit. This carries the promotion merge commit into `develop` so the next strict, up-to-date promotion PR can merge cleanly. The sync PR targets `develop`, so it does not trigger the main-only Release Drafter workflow.
 
 Both `develop` and `main` are protected: changes require a pull request, the `check` GitHub Actions check-run on an up-to-date branch, resolved conversations, and admin enforcement; zero approvals are required. Force pushes and branch deletion are disabled. Protection settings are GitHub repository settings, not enforced by the workflow files in this repository.
 
 ## Draft lifecycle
 
-Only pushes to `main` update the one rolling GitHub Release draft. A promotion merge therefore captures the batch chosen for `main`; multiple promotion merges before publication are accumulated into the same draft. The draft's change entry uses the promotion PR body rather than its title or internal process details. The first draft is created as `v0.1.0` after the next merge to `main`; it summarizes the first promoted batch, including previously unreleased work already on `develop`. No release draft exists yet.
+Only pushes to `main` update the one rolling GitHub Release draft. A promotion merge therefore captures the batch chosen for `main`; multiple promotion merges before publication are accumulated into the same draft. Release Drafter generates entries from PR titles, numbers, and authors, grouped by the existing version labels; it does not use PR bodies. After each workflow run, the maintainer reviews the draft and manually curates/copies concise user-facing release notes into it, excluding process checklists and internal evidence. The first promotion created the `v0.1.0` draft, which is tagged `v0.1.0`, has `prerelease=true`, targets `main`, was manually curated, and remains unpublished. Publication is a separate action gated on release readiness. The current `main` workflow still has the older `$BODY` change-template; this title-only configuration takes effect after a future `develop`→`main` promotion includes it.
 
 After the first release is published, the next release batch defaults to a patch bump. Put one of these existing labels on the **promotion PR** before it merges to request a larger bump:
 
@@ -31,7 +32,7 @@ The labels on feature PRs merged to `develop` do not choose the version of a lat
 
 1. Open the repository’s [Releases page](https://github.com/BPHvZ/pixel-agents-canvas/releases).
 2. Review the rolling draft, including the resolved version and generated notes.
-3. When the release-readiness gates are satisfied, publish the draft. Publication makes the tagged source snapshot and GitHub-generated source archives available; it does not install or update a Copilot App canvas or publish it to a marketplace. The App's separate initial-install path is described in the [README](../README.md).
+3. When the release-readiness gates are satisfied, publish the reviewed draft manually. Publication makes the tagged source snapshot and GitHub-generated source archives available; it does not install or update a Copilot App canvas or publish it to a marketplace. The App's separate initial-install path is described in the [README](../README.md).
 
 ## Branch protection policy
 

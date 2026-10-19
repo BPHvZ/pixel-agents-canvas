@@ -1,3 +1,3 @@
 ## Release notes
 
-<!-- Replace this comment with concise, user-facing notes for the changes in this release batch. Remove the comment before merging. Do not include review checklists or internal process notes. -->
+<!-- Prepare concise, user-facing notes for the changes in this promotion. After Release Drafter runs on main, the maintainer manually curates/copies final notes into the rolling release draft. The draft's generated entries use PR titles, numbers, and authors; its body is not used. Do not put internal checklists or verification evidence in release notes. -->
