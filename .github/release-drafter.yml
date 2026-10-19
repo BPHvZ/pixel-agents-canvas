@@ -1,7 +1,8 @@
 name-template: 'v$RESOLVED_VERSION'
 tag-template: 'v$RESOLVED_VERSION'
 version-template: '$MAJOR.$MINOR.$PATCH$PRERELEASE'
-change-template: '$BODY'
+change-template: '- $TITLE (#$NUMBER) @$AUTHOR'
+change-title-escapes: '\<*_&'
 categories:
   - title: 'Breaking Changes'
     semver-increment: major
