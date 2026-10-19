@@ -1,0 +1,23 @@
+name: Documentation
+description: Report confusing or missing documentation.
+title: "[Docs]: "
+labels: ["documentation"]
+body:
+  - type: markdown
+    attributes:
+      value: >-
+        **Privacy:** Never include prompts, transcripts, tool payloads, credentials, local paths, or unredacted screenshots/logs. Redact or synthesize examples.
+  - type: textarea
+    id: details
+    attributes:
+      label: Documentation issue or suggestion
+      description: What is confusing, missing, or inaccurate? Link the relevant page or section when possible.
+    validations:
+      required: true
+  - type: textarea
+    id: context
+    attributes:
+      label: Safe context
+      description: Share relevant version details. Do not include private session data.
+    validations:
+      required: false
